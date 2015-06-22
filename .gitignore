@@ -1,0 +1,6 @@
+.cabal-sandbox/
+.idea/
+cabal.sandbox.config
+dist/
+hxkcd.iml
+
