@@ -12,7 +12,16 @@ import Network.URI (parseURI, URI(..))
 import Graphics.UI.WX
 import Graphics.UI.WXCore
 import FeedService
+import System.Directory
 
+data Env = Env {
+    baseDir :: FilePath
+}
+
+--data XkcdIndex = XkcdIndex {
+--    num :: Int,
+--    index :: Int
+--}
 
 main :: IO ()
 main = start hxkcd
@@ -20,6 +29,10 @@ main = start hxkcd
 hxkcd :: IO ()
 hxkcd
   = do
+      hd <- getHomeDirectory
+      let env = Env (hd ++ "/.hxkcd/")
+      createDirectoryIfMissing False $ baseDir env
+
       ref <- newIORef (0)
 
       f <- frame [ text := "HXKCD" ]
@@ -55,17 +68,17 @@ hxkcd
                                                 [ fill (widget sw) ]
                                                ]
               , clientSize := sz 300 200
-              , on (menu first) := do { writeIORef ref 1; updateImage titleContainer dateContainer altContainer sw f vbitmap ref }
-              , on (menu left) := do { modifyIORef' ref (subtract 1); updateImage titleContainer dateContainer altContainer sw f vbitmap ref }
-              , on (menu right) := do { modifyIORef' ref (+1); updateImage titleContainer dateContainer altContainer sw f vbitmap ref }
-              , on (menu last) := do { writeIORef ref 0; updateImage titleContainer dateContainer altContainer sw f vbitmap ref }
+              , on (menu first) := do { writeIORef ref 1; updateImage titleContainer dateContainer altContainer sw f vbitmap ref env }
+              , on (menu left) := do { modifyIORef' ref (subtract 1); updateImage titleContainer dateContainer altContainer sw f vbitmap ref env }
+              , on (menu right) := do { modifyIORef' ref (+1); updateImage titleContainer dateContainer altContainer sw f vbitmap ref env }
+              , on (menu last) := do { writeIORef ref 0; updateImage titleContainer dateContainer altContainer sw f vbitmap ref env }
               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
 
-      updateImage titleContainer dateContainer altContainer sw f vbitmap ref
+      updateImage titleContainer dateContainer altContainer sw f vbitmap ref env
 
       return ()
   where
-    updateImage titleContainer dateContainer altContainer sw f vbitmap ref
+    updateImage titleContainer dateContainer altContainer sw f vbitmap ref env
           = do ref' <- readIORef ref
                xkcdFeed <- getFeed $ getUrl ref'
 
@@ -79,7 +92,8 @@ hxkcd
                                        set dateContainer [ text := getDate feed ]
                                        set altContainer [ text := getAlt feed ]
 
-                                       let fileName = getFinalUrlPart uri
+                                       hd <- getHomeDirectory
+                                       let fileName =  baseDir env ++ getFinalUrlPart uri
                                        B.writeFile fileName imageData
                                        openImage sw vbitmap f fileName
 
