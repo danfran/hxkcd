@@ -4,6 +4,7 @@ module Main where
 import Data.Aeson
 import qualified Data.Foldable as F (forM_)
 import qualified Data.ByteString.Lazy as B
+import Data.Maybe (fromJust)
 import Data.IORef
 import Control.Applicative
 import Control.Monad
@@ -11,17 +12,13 @@ import Network.HTTP
 import Network.URI (parseURI, URI(..))
 import Graphics.UI.WX
 import Graphics.UI.WXCore
-import FeedService
+import Feed
 import System.Directory
+import qualified Control.Monad.State as S
 
 data Env = Env {
     baseDir :: FilePath
 }
-
---data XkcdIndex = XkcdIndex {
---    num :: Int,
---    index :: Int
---}
 
 main :: IO ()
 main = start hxkcd
@@ -82,24 +79,24 @@ hxkcd
           = do ref' <- readIORef ref
                xkcdFeed <- getFeed $ getUrl ref'
 
-               case xkcdFeed of
-                      Left err -> return ()
-                      Right feed -> do let uri = getUri feed
+               let feed = fromJust xkcdFeed
 
-                                       imageData <- simpleHTTP (defaultGETRequest_ uri) >>= getResponseBody
+               let uri = getUri feed
 
-                                       set titleContainer [ text := getTitle feed ]
-                                       set dateContainer [ text := getDate feed ]
-                                       set altContainer [ text := getAlt feed ]
+               imageData <- simpleHTTP (defaultGETRequest_ uri) >>= getResponseBody
 
-                                       hd <- getHomeDirectory
-                                       let fileName =  baseDir env ++ getFinalUrlPart uri
-                                       B.writeFile fileName imageData
-                                       openImage sw vbitmap f fileName
+               set titleContainer [ text := getTitle feed ]
+               set dateContainer [ text := getDate feed ]
+               set altContainer [ text := getAlt feed ]
 
-                                       writeIORef ref $ getNum feed
+               hd <- getHomeDirectory
+               let fileName =  baseDir env ++ getFinalUrlPart uri
+               B.writeFile fileName imageData
+               openImage sw vbitmap f fileName
 
-                                       resizeWindow titleContainer dateContainer altContainer sw f
+               writeIORef ref $ getNum feed
+
+               resizeWindow titleContainer dateContainer altContainer sw f
 
     resizeWindow title date alt sw f
           = do sws <- get sw size
