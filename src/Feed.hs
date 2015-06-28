@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Feed where
 
@@ -7,22 +8,21 @@ import Data.Maybe (fromJust)
 import Data.List (intercalate)
 import Data.Text (Text, unpack)
 import Control.Monad.State
+import Data.IORef
 import Network.HTTP
 import GHC.Generics
 import Control.Applicative
 import Network.HTTP.Conduit (simpleHttp)
 import qualified Data.ByteString.Lazy as B
 
-type Feed a = StateT FeedIndex IO a
-
 data FeedIndex = FeedIndex {
     lastIndex :: Int,
     index :: Int
 } deriving (Show)
 
-startIndex = FeedIndex { lastIndex = 0, index = 0 }
+initCursor = FeedIndex { lastIndex = 0, index = 0 }
 
-data Navigation = First | Previous | Random | Next | Last
+data Navigation = First | Previous | Random | Next | Last deriving (Eq, Show)
 
 data Xkcd = Xkcd {
     month :: !Text,
@@ -50,7 +50,7 @@ getUrl n
     | otherwise = "http://xkcd.com/" ++ show n ++ "/info.0.json"
 
 getJSON :: String -> IO B.ByteString
-getJSON url = simpleHttp url
+getJSON = simpleHttp
 
 getFinalUrlPart :: URI -> String
 getFinalUrlPart = reverse . takeWhile (/='/') . reverse . uriPath
@@ -65,29 +65,7 @@ getAlt :: Xkcd -> String
 getAlt xkcd = unpack $ alt xkcd
 
 getNum :: Xkcd -> Int
-getNum xkcd = num xkcd
+getNum = num
 
 getFeed :: String -> IO (Maybe Xkcd)
 getFeed url = (decode <$> getJSON url) :: IO (Maybe Xkcd)
-
-getIndex :: Navigation -> Feed FeedIndex
-getIndex navigation = do
-  cursor <- get
-  newCursor <- case navigation of
-                    First -> return cursor { index = 1 }
-
-                    Previous -> if index cursor > 1
-                                    then return cursor { index = index cursor - 1 }
-                                    else return cursor
-
-                    Next -> if index cursor < lastIndex cursor
-                                then return cursor { index = index cursor + 1 }
-                                else return cursor
-
-                    Last -> do feed <- liftIO $ getFeed $ getUrl 0
-                               let i = getNum $ fromJust feed
-                               return $ cursor { lastIndex = i, index = i }
-
-                    otherwise -> return cursor
-  put newCursor
-  return newCursor
