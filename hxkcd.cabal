@@ -31,5 +31,7 @@ executable hxkcd
                        , file-embed
                        , directory
                        , mtl
+                       , time
+                       , old-locale
   hs-source-dirs:      src
   default-language:    Haskell2010

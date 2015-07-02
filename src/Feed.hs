@@ -13,6 +13,9 @@ import Network.HTTP
 import GHC.Generics
 import Control.Applicative
 import Network.HTTP.Conduit (simpleHttp)
+import System.Locale
+import Data.Time
+import Data.Time.Format
 import qualified Data.ByteString.Lazy as B
 
 data FeedIndex = FeedIndex {
@@ -42,7 +45,9 @@ instance FromJSON Xkcd
 instance ToJSON Xkcd
 
 getDate :: Xkcd -> String
-getDate xkcd = intercalate "/" $ map (unpack . ($ xkcd)) [year, month, day]
+getDate xkcd = formatTime defaultTimeLocale "%B %d %Y" date
+               where date = readTime defaultTimeLocale "%Y/%-m/%-d" feedDate :: UTCTime
+                     feedDate = intercalate "/" $ map (unpack . ($ xkcd)) [year, month, day]
 
 getUrl :: Int -> String
 getUrl n

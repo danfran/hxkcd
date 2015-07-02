@@ -68,9 +68,9 @@ hxkcd
 
       sw <- scrolledWindow p [ bgcolor := white, scrollRate := sz 10 10, virtualSize := swSize, fullRepaintOnResize := False ]
 
-      set f [ layout := container p $ margin 10 $ grid 1 3 [
-                                                            [ hfill (widget titleContainer) ],
+      set f [ layout := container p $ margin 10 $ grid 1 4 [
                                                             [ hfill (widget dateContainer) ],
+                                                            [ hfill (widget titleContainer) ],
                                                             [ fill (widget altContainer) ],
                                                             [ fill $ minsize swSize $ (widget sw) ]
                                                            ]
