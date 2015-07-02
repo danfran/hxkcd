@@ -10,6 +10,7 @@ import Data.Maybe (fromJust)
 import Data.IORef
 import Control.Applicative
 import Control.Monad
+import qualified Control.Exception as E
 import Network.HTTP
 import Network.URI (parseURI, URI(..))
 import Graphics.UI.WX
@@ -26,7 +27,7 @@ data Components = Components {
     titleContainer :: StaticText(),
     dateContainer :: StaticText(),
     altContainer :: TextCtrl(),
-    sw :: Panel()
+    sw :: ScrolledWindow()
 }
 
 main :: IO ()
@@ -63,15 +64,18 @@ hxkcd
       dateContainer <- staticText p []
       altContainer <- textCtrl p [ enabled := False, wrap := WrapNone ]
 
-      sw <- panel p [ bgcolor := white, fullRepaintOnResize := False ]
+      let swSize = Size 750 480
 
-      set f [ layout := container p $ margin 10 $ grid 1 4 [
-                                                [ hfill (widget titleContainer) ],
-                                                [ hfill (widget dateContainer) ],
-                                                [ hfill (widget altContainer) ],
-                                                [ fill (widget sw) ]
-                                               ]
-              , clientSize := sz 300 200 ]
+      sw <- scrolledWindow p [ bgcolor := white, scrollRate := sz 10 10, virtualSize := swSize, fullRepaintOnResize := False ]
+
+      set f [ layout := container p $ margin 10 $ grid 1 3 [
+                                                            [ hfill (widget titleContainer) ],
+                                                            [ hfill (widget dateContainer) ],
+                                                            [ fill (widget altContainer) ],
+                                                            [ fill $ minsize swSize $ (widget sw) ]
+                                                           ]
+              , clientSize := sz 800 640
+            ]
 
       -- set actions
 
@@ -84,7 +88,6 @@ hxkcd
               , on (menu next)     := do { updateImage components vbitmap cursor Next env }
               , on (menu last)     := do { updateImage components vbitmap cursor Last env }
               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
-
 
       set sw [ on paint := onPaint vbitmap ]
 
@@ -109,8 +112,6 @@ hxkcd
                let fileName =  baseDir env ++ getFinalUrlPart uri
                B.writeFile fileName imageData
                openImage (sw components) vbitmap f fileName
-
-               resizeWindow components
 
     getIndex navigation ref
           = do
@@ -141,20 +142,9 @@ hxkcd
               writeIORef ref newCursor
               return newCursor
 
-    resizeWindow components
-          = do sws <- get (sw components) size
-               tcs <- get (titleContainer components) size
-               dcs <- get (dateContainer components) size
-               acs <- get (altContainer components) size
-
-               -- let maxW = foldl (max . sizeW) 100 [ sws, tcs, dcs, acs ]
-               let maxW = maximum (map sizeW [ sws, tcs, dcs, acs ]) + 20
-               let maxH = sum (map sizeH [ sws, tcs, dcs, acs ]) + 35
-
-               set (f components) [ clientSize := Size maxW maxH ]
-
     onPaint vbitmap dc viewArea
-          = do mbBitmap <- get vbitmap value
+          = do logNullCreate -- to prevent iCCP warning dialog
+               mbBitmap <- get vbitmap value
                case mbBitmap of
                  Nothing -> return ()
                  Just bm -> drawBitmap dc bm pointZero False []
@@ -169,6 +159,5 @@ hxkcd
                set vbitmap [ value := Just bm ]
                -- resize
                bmsize <- get bm size
-               set sw [ clientSize := bmsize ]
+               set sw [ virtualSize := bmsize ]
                repaint sw
---           `catch` \err -> repaint sw
