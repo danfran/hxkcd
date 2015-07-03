@@ -45,8 +45,8 @@ instance ToJSON Xkcd
 
 getDate :: Xkcd -> String
 getDate xkcd = formatTime defaultTimeLocale "%B %d %Y" date
-               where date = readTime defaultTimeLocale "%Y/%-m/%-d" feedDate :: UTCTime
-                     feedDate = intercalate "/" $ map (unpack . ($ xkcd)) [year, month, day]
+               where date = buildTime defaultTimeLocale feedDate :: UTCTime
+                     feedDate = zip "Ymd" $ map (unpack . ($ xkcd)) [year, month, day]
 
 getUrl :: Int -> String
 getUrl n
@@ -60,13 +60,13 @@ getFinalUrlPart :: URI -> String
 getFinalUrlPart = reverse . takeWhile (/='/') . reverse . uriPath
 
 getUri :: Xkcd -> URI
-getUri feed = fromJust $ parseURI $ unpack $ img feed
+getUri = fromJust . parseURI . unpack . img
 
 getTitle :: Xkcd -> String
-getTitle xkcd = unpack $ title xkcd
+getTitle = unpack . title
 
 getAlt :: Xkcd -> String
-getAlt xkcd = unpack $ alt xkcd
+getAlt = unpack . alt
 
 getNum :: Xkcd -> Int
 getNum = num

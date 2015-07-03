@@ -22,7 +22,7 @@ data Env = Env {
     baseDir :: FilePath
 }
 
-data Navigation = First | Previous | Random | Next | Last deriving (Eq, Show)
+data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
 data Components = Components {
     f :: Frame(),
@@ -42,7 +42,7 @@ hxkcd
       let env = Env (hd ++ "/.hxkcd/")
       createDirectoryIfMissing False $ baseDir env
 
-      cursor <- newIORef (initCursor)
+      cursor <- newIORef initCursor
 
       f <- frame [ text := "HXKCD" ]
 
@@ -74,7 +74,7 @@ hxkcd
                                                             [ hfill (widget dateContainer) ],
                                                             [ hfill (widget titleContainer) ],
                                                             [ fill (widget altContainer) ],
-                                                            [ fill $ minsize swSize $ (widget sw) ]
+                                                            [ fill $ minsize swSize $ widget sw ]
                                                            ]
               , clientSize := sz 800 640
             ]
@@ -85,11 +85,11 @@ hxkcd
 
       vbitmap <- variable [ value := Nothing ]
 
-      set f [ on (menu first)      := do { updateImage components vbitmap cursor First env }
-              , on (menu previous) := do { updateImage components vbitmap cursor Previous env }
-              , on (menu random)   := do { updateImage components vbitmap cursor Random env }
-              , on (menu next)     := do { updateImage components vbitmap cursor Next env }
-              , on (menu last)     := do { updateImage components vbitmap cursor Last env }
+      set f [ on (menu first)      := updateImage components vbitmap cursor First env
+              , on (menu previous) := updateImage components vbitmap cursor Previous env
+              , on (menu random)   := updateImage components vbitmap cursor Random env
+              , on (menu next)     := updateImage components vbitmap cursor Next env
+              , on (menu last)     := updateImage components vbitmap cursor Last env
               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
 
       set sw [ on paint := onPaint vbitmap ]
@@ -120,8 +120,6 @@ hxkcd
           = do
               cursor@FeedIndex { index, lastIndex } <- readIORef ref
 
-              print $ show cursor
-
               newCursor <- case navigation of
                                 First -> return cursor { index = 1 }
 
@@ -140,7 +138,6 @@ hxkcd
                                            let i = getNum $ fromJust feed
                                            return $ cursor { lastIndex = i, index = i }
 
-              print navigation
               print $ show newCursor
 
               writeIORef ref newCursor
