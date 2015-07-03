@@ -33,5 +33,6 @@ executable hxkcd
                        , mtl
                        , time
                        , old-locale
+                       , random
   hs-source-dirs:      src
   default-language:    Haskell2010

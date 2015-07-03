@@ -14,6 +14,7 @@ import GHC.Generics
 import Control.Applicative
 import Network.HTTP.Conduit (simpleHttp)
 import System.Locale
+import System.Random
 import Data.Time
 import Data.Time.Format
 import qualified Data.ByteString.Lazy as B
@@ -24,8 +25,6 @@ data FeedIndex = FeedIndex {
 } deriving (Show)
 
 initCursor = FeedIndex { lastIndex = 0, index = 0 }
-
-data Navigation = First | Previous | Random | Next | Last deriving (Eq, Show)
 
 data Xkcd = Xkcd {
     month :: !Text,
@@ -71,6 +70,9 @@ getAlt xkcd = unpack $ alt xkcd
 
 getNum :: Xkcd -> Int
 getNum = num
+
+getRandomNum :: Int -> IO Int
+getRandomNum upperLimit = getStdRandom (randomR (1,upperLimit))
 
 getFeed :: String -> IO (Maybe Xkcd)
 getFeed url = (decode <$> getJSON url) :: IO (Maybe Xkcd)

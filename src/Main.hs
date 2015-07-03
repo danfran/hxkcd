@@ -22,6 +22,8 @@ data Env = Env {
     baseDir :: FilePath
 }
 
+data Navigation = First | Previous | Random | Next | Last deriving (Eq, Show)
+
 data Components = Components {
     f :: Frame(),
     titleContainer :: StaticText(),
@@ -85,6 +87,7 @@ hxkcd
 
       set f [ on (menu first)      := do { updateImage components vbitmap cursor First env }
               , on (menu previous) := do { updateImage components vbitmap cursor Previous env }
+              , on (menu random)   := do { updateImage components vbitmap cursor Random env }
               , on (menu next)     := do { updateImage components vbitmap cursor Next env }
               , on (menu last)     := do { updateImage components vbitmap cursor Last env }
               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
@@ -126,7 +129,8 @@ hxkcd
                                                         then cursor { index = index - 1 }
                                                         else cursor
 
-                                Random -> return cursor
+                                Random -> do rn <- getRandomNum lastIndex
+                                             return cursor { index = rn }
 
                                 Next -> return $ if index < lastIndex
                                                     then cursor { index = index + 1 }
