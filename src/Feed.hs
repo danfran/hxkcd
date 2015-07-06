@@ -74,5 +74,8 @@ getNum = num
 getRandomNum :: Int -> IO Int
 getRandomNum upperLimit = getStdRandom (randomR (1,upperLimit))
 
-getFeed :: String -> IO (Maybe Xkcd)
-getFeed url = (decode <$> getJSON url) :: IO (Maybe Xkcd)
+getFeedFromUrl :: String -> IO (Maybe Xkcd)
+getFeedFromUrl url = (decode <$> getJSON url) :: IO (Maybe Xkcd)
+
+getFeedFromFile :: String -> IO (Maybe Xkcd)
+getFeedFromFile path = (decode <$> B.readFile path) :: IO (Maybe Xkcd)

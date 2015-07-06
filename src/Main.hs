@@ -9,6 +9,7 @@ import Data.Aeson
 import Data.Maybe (fromJust)
 import Data.IORef
 import Control.Applicative
+import Control.Exception
 import Control.Monad
 import qualified Control.Exception as E
 import Network.HTTP
@@ -56,11 +57,11 @@ hxkcd
       last     <- menuItem file [ text := "Las&t\tCtrl+T", help := "Load last image" ]
 
       tbar <- toolBar f []
-      toolMenu tbar first  "First" "icons/start_left16.png"  []
-      toolMenu tbar previous  "Previous" "icons/left16.png"  []
-      toolMenu tbar random  "Random" "icons/random16.png"  []
-      toolMenu tbar next "Next" "icons/right16.png" []
-      toolMenu tbar last "Last" "icons/end_right16.png" []
+      toolMenu tbar first    "First" "icons/start_left16.png" []
+      toolMenu tbar previous "Previous" "icons/left16.png"    []
+      toolMenu tbar random   "Random" "icons/random16.png"    []
+      toolMenu tbar next     "Next" "icons/right16.png"       []
+      toolMenu tbar last     "Last" "icons/end_right16.png"   []
 
       titleContainer <- staticText p []
       dateContainer <- staticText p []
@@ -85,36 +86,37 @@ hxkcd
 
       vbitmap <- variable [ value := Nothing ]
 
-      set f [ on (menu first)      := updateImage components vbitmap cursor First env
-              , on (menu previous) := updateImage components vbitmap cursor Previous env
-              , on (menu random)   := updateImage components vbitmap cursor Random env
-              , on (menu next)     := updateImage components vbitmap cursor Next env
-              , on (menu last)     := updateImage components vbitmap cursor Last env
+      set f [ on (menu first)      := getImage components vbitmap cursor First env
+              , on (menu previous) := getImage components vbitmap cursor Previous env
+              , on (menu random)   := getImage components vbitmap cursor Random env
+              , on (menu next)     := getImage components vbitmap cursor Next env
+              , on (menu last)     := getImage components vbitmap cursor Last env
               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
 
       set sw [ on paint := onPaint vbitmap ]
 
-      updateImage components vbitmap cursor Last env
+      getImage components vbitmap cursor Last env
 
       return ()
   where
-    updateImage components vbitmap cursor nav env
-          = do feedIndex <- getIndex nav cursor
-               xkcdFeed <- getFeed $ getUrl $ index feedIndex
+    getImage components vbitmap cursor nav env
+          = do id <- fmap index (getIndex nav cursor)
+               feed <- fmap fromJust (getFeedFromUrl $ getUrl id) -- lack of check
 
-               let feed = fromJust xkcdFeed
+               let imageFileName = baseDir env ++ show id ++ "-" ++ getFinalUrlPart (getUri feed)
+               let metadataFileName = baseDir env ++ show id ++ ".metadata.json"
 
-               let uri = getUri feed
+               doesFileExist imageFileName >>= \exists -> unless exists (saveImage imageFileName feed) -- lack of check
+               doesFileExist metadataFileName >>= \exists -> unless exists (saveMetadata metadataFileName feed) -- lack of check
 
-               imageData <- simpleHTTP (defaultGETRequest_ uri) >>= getResponseBody
-               set (titleContainer components) [ text := getTitle feed ]
-               set (dateContainer components) [ text := getDate feed ]
-               set (altContainer components) [ text := getAlt feed ]
+               displayImage (sw components) vbitmap imageFileName
+               displayMetadata components metadataFileName
 
-               hd <- getHomeDirectory
-               let fileName =  baseDir env ++ getFinalUrlPart uri
-               B.writeFile fileName imageData
-               openImage (sw components) vbitmap f fileName
+    saveImage imageFileName feed
+          = do imageData <- simpleHTTP (defaultGETRequest_ $ getUri feed) >>= getResponseBody -- lack of check
+               B.writeFile imageFileName imageData
+
+    saveMetadata metadataFileName feed = B.writeFile metadataFileName (encode feed)
 
     getIndex navigation ref
           = do
@@ -134,7 +136,7 @@ hxkcd
                                                     then cursor { index = index + 1 }
                                                     else cursor
 
-                                Last -> do feed <- S.liftIO $ getFeed $ getUrl 0
+                                Last -> do feed <- S.liftIO $ getFeedFromUrl $ getUrl 0
                                            let i = getNum $ fromJust feed
                                            return $ cursor { lastIndex = i, index = i }
 
@@ -154,7 +156,13 @@ hxkcd
           = do mbBitmap <- swap vbitmap value Nothing
                F.forM_ mbBitmap objectDelete
 
-    openImage sw vbitmap container fname
+    displayMetadata components fname
+          = do feed <- fmap fromJust (getFeedFromFile fname)
+               set (titleContainer components) [ text := getTitle feed ]
+               set (dateContainer components)  [ text := getDate feed ]
+               set (altContainer components)   [ text := getAlt feed ]
+
+    displayImage sw vbitmap fname
           = do bm <- bitmapCreateFromFile fname  -- can fail with exception
                closeImage vbitmap
                set vbitmap [ value := Just bm ]
