@@ -1,27 +1,21 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import qualified Control.Monad.State as S
-import qualified Data.Foldable as F (forM_)
-import qualified Data.ByteString.Lazy as B
-import Data.Aeson
-import Data.Maybe (fromJust)
-import Data.IORef
-import Control.Applicative
 import Control.Exception
 import Control.Monad
-import qualified Control.Exception as E
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Foldable as F (forM_)
+import Data.IORef
+import Graphics.UI.WX hiding (when)
+import Graphics.UI.WXCore hiding (when)
 import Network.HTTP
-import Network.URI (parseURI, URI(..))
-import Graphics.UI.WX
-import Graphics.UI.WXCore
 import System.Directory
-import Feed
 
-data Env = Env {
-    baseDir :: FilePath
-}
+import Feed
+import Xkcd
 
 data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
@@ -95,55 +89,56 @@ hxkcd
 
       set sw [ on paint := onPaint vbitmap ]
 
+      -- start
+
       getImage components vbitmap cursor Last env
 
       return ()
   where
-    getImage components vbitmap cursor nav env
-          = do id <- fmap index (getIndex nav cursor)
-               feed <- fmap fromJust (getFeedFromUrl $ getUrl id) -- lack of check
+    getImage components vbitmap ref navigation env
+          = do cursor@FeedIndex { index, lastIndex } <- readIORef ref
 
-               let imageFileName = baseDir env ++ show id ++ "-" ++ getFinalUrlPart (getUri feed)
-               let metadataFileName = baseDir env ++ show id ++ ".metadata.json"
+               cur@FeedIndex { index, lastIndex }
+                <- case navigation of
+                     First -> return cursor { index = 1 }
 
-               doesFileExist imageFileName >>= \exists -> unless exists (saveImage imageFileName feed) -- lack of check
-               doesFileExist metadataFileName >>= \exists -> unless exists (saveMetadata metadataFileName feed) -- lack of check
+                     Previous -> return $ if index > 1 then cursor { index = index - 1 } else cursor
 
-               displayImage (sw components) vbitmap imageFileName
-               displayMetadata components metadataFileName
+                     Random -> getRandomNum lastIndex >>= \rn -> return $ cursor { index = rn }
 
-    saveImage imageFileName feed
-          = do imageData <- simpleHTTP (defaultGETRequest_ $ getUri feed) >>= getResponseBody -- lack of check
-               B.writeFile imageFileName imageData
+                     Next -> return $ if index < lastIndex then cursor { index = index + 1 } else cursor
 
-    saveMetadata metadataFileName feed = B.writeFile metadataFileName (encode feed)
+                     Last -> catch updateAsLast (\(_ :: SomeException) -> return $ cursor)
+                             where updateAsLast = do r <- downloadFeed $ getUrl 0
+                                                     let id = getNum r
+                                                     let fileName = getFeedPath env id
+                                                     saveFeed fileName r
+                                                     displayContent env id components vbitmap r
+                                                     return $ cursor { lastIndex = id, index = id }
 
-    getIndex navigation ref
-          = do
-              cursor@FeedIndex { index, lastIndex } <- readIORef ref
+               print $ show cur
+               writeIORef ref cur
+               fetchFeed env index components vbitmap >>= unless (navigation == Last)
+               return ()
 
-              newCursor <- case navigation of
-                                First -> return cursor { index = 1 }
+    displayContent env id components vbitmap feed =
+        (fetchImage env id components vbitmap $ getUri feed) >> displayMetadata components feed
 
-                                Previous -> return $ if index > 1
-                                                        then cursor { index = index - 1 }
-                                                        else cursor
+    fetchFeed env id components vbitmap
+          = do let fileName = getFeedPath env id
+               exists <- doesFileExist fileName
+               return $ if exists then catch (loadFeed fileName >>= displayContent env id components vbitmap)
+                                             (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
+                                  else catch ((downloadFeed $ getUrl id) >>= saveFeed fileName >>= displayContent env id components vbitmap)
+                                             (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
 
-                                Random -> do rn <- getRandomNum lastIndex
-                                             return cursor { index = rn }
-
-                                Next -> return $ if index < lastIndex
-                                                    then cursor { index = index + 1 }
-                                                    else cursor
-
-                                Last -> do feed <- S.liftIO $ getFeedFromUrl $ getUrl 0
-                                           let i = getNum $ fromJust feed
-                                           return $ cursor { lastIndex = i, index = i }
-
-              print $ show newCursor
-
-              writeIORef ref newCursor
-              return newCursor
+    fetchImage env id components vbitmap uri
+         = do let fileName = getImagePath env id uri
+              exists <- doesFileExist fileName
+              unless exists $ catch (downloadImage uri >>= saveImage fileName >> return ())
+                                    (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
+              catch (loadImage fileName >>= displayImage (sw components) vbitmap)
+                    (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
 
     onPaint vbitmap dc viewArea
           = do logNullCreate -- to prevent iCCP warning dialog
@@ -156,15 +151,13 @@ hxkcd
           = do mbBitmap <- swap vbitmap value Nothing
                F.forM_ mbBitmap objectDelete
 
-    displayMetadata components fname
-          = do feed <- fmap fromJust (getFeedFromFile fname)
-               set (titleContainer components) [ text := getTitle feed ]
+    displayMetadata components feed
+          = do set (titleContainer components) [ text := getTitle feed ]
                set (dateContainer components)  [ text := getDate feed ]
                set (altContainer components)   [ text := getAlt feed ]
 
-    displayImage sw vbitmap fname
-          = do bm <- bitmapCreateFromFile fname  -- can fail with exception
-               closeImage vbitmap
+    displayImage sw vbitmap bm
+          = do closeImage vbitmap
                set vbitmap [ value := Just bm ]
                -- resize
                bmsize <- get bm size
