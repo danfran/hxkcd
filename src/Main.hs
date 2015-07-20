@@ -98,7 +98,7 @@ hxkcd
     getImage components vbitmap ref navigation env
           = do cursor@FeedIndex { index, lastIndex } <- readIORef ref
 
-               cur@FeedIndex { index, lastIndex }
+               cursor@FeedIndex { index, lastIndex }
                 <- case navigation of
                      First -> return cursor { index = 1 }
 
@@ -116,8 +116,8 @@ hxkcd
                                                      displayContent env id components vbitmap r
                                                      return $ cursor { lastIndex = id, index = id }
 
-               print $ show cur
-               writeIORef ref cur
+               print $ show cursor
+               writeIORef ref cursor
                fetchFeed env index components vbitmap >>= unless (navigation == Last)
                return ()
 
