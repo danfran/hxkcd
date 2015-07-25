@@ -65,7 +65,7 @@ getImagePath env id uri = baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
 
 -- image
 
-downloadImage :: String -> IO (B.ByteString)
+downloadImage :: String -> IO B.ByteString
 downloadImage uri = do
   r <- liftIO $ tryIOError $ simpleHttp uri
   case r of
@@ -79,7 +79,7 @@ loadImage path = do
     Left e  -> throw LoadImage
     Right f -> return f
 
-saveImage :: String -> B.ByteString -> IO (B.ByteString)
+saveImage :: String -> B.ByteString -> IO B.ByteString
 saveImage path image = do
   r <- liftIO $ tryIOError $ B.writeFile path image
   case r of
@@ -89,21 +89,21 @@ saveImage path image = do
 
 -- feed
 
-downloadFeed :: String -> IO (Xkcd)
+downloadFeed :: String -> IO Xkcd
 downloadFeed url = do
   r <- liftIO $ tryIOError $ simpleHttp url
   case r of
     Left e  -> throw DownloadFeed
     Right f -> return $ fromJust $ decode f
 
-loadFeed :: String -> IO (Xkcd)
+loadFeed :: String -> IO Xkcd
 loadFeed path = do
   r <- liftIO $ tryIOError $ B.readFile path
   case r of
     Left e  -> throw LoadFeed
     Right f -> return $ fromJust $ decode f
 
-saveFeed :: String -> Xkcd -> IO (Xkcd)
+saveFeed :: String -> Xkcd -> IO Xkcd
 saveFeed path feed = do
   r <- liftIO $ tryIOError $ B.writeFile path $ encode feed
   case r of

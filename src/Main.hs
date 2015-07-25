@@ -108,7 +108,7 @@ hxkcd
 
                      Next -> return $ if index < lastIndex then cursor { index = index + 1 } else cursor
 
-                     Last -> catch updateAsLast (\(_ :: SomeException) -> return $ cursor)
+                     Last -> catch updateAsLast (\(_ :: SomeException) -> return cursor)
                              where updateAsLast = do r <- downloadFeed $ getUrl 0
                                                      let id = getNum r
                                                      let fileName = getFeedPath env id
@@ -118,19 +118,19 @@ hxkcd
 
                print $ show cursor
                writeIORef ref cursor
-               fetchFeed env index components vbitmap >>= unless (navigation == Last)
+               fetchFeed env index components vbitmap navigation >>= unless (navigation == Last)
                return ()
 
-    displayContent env id components vbitmap feed =
-        (fetchImage env id components vbitmap $ getUri feed) >> displayMetadata components feed
-
-    fetchFeed env id components vbitmap
+    fetchFeed env id components vbitmap navigation
           = do let fileName = getFeedPath env id
                exists <- doesFileExist fileName
                return $ if exists then catch (loadFeed fileName >>= displayContent env id components vbitmap)
                                              (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
-                                  else catch ((downloadFeed $ getUrl id) >>= saveFeed fileName >>= displayContent env id components vbitmap)
+                                  else catch (downloadFeed (getUrl id) >>= saveFeed fileName >>= displayContent env id components vbitmap)
                                              (\(e :: SomeException) -> putStrLn $ "Error: " ++ show e)
+
+    displayContent env id components vbitmap feed =
+         fetchImage env id components vbitmap (getUri feed) >> displayMetadata components feed
 
     fetchImage env id components vbitmap uri
          = do let fileName = getImagePath env id uri
