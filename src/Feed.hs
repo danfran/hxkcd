@@ -20,11 +20,6 @@ data FeedIndex = FeedIndex {
     index :: Int
 } deriving (Show)
 
-type ConfigIO = ReaderT Env IO
-
-data Env = Env {
-    baseDir :: FilePath
-}
 
 initCursor = FeedIndex { lastIndex = 0, index = 0 }
 
@@ -35,12 +30,6 @@ getUrl n
 
 getFinalUrlPart :: String -> String
 getFinalUrlPart = reverse . takeWhile (/='/') . reverse
-
-getFeedPath :: String -> Int -> String
-getFeedPath dir id = dir ++ show id ++ ".metadata.json"
-
-getImagePath :: String -> Int -> String -> String
-getImagePath dir id uri = dir ++ show id ++ "-" ++ getFinalUrlPart uri
 
 -- image
 
@@ -68,21 +57,21 @@ saveImage path image = do
 
 -- feed
 
-downloadFeed :: String -> ConfigIO (Maybe Xkcd)
+downloadFeed :: String -> IO (Maybe Xkcd)
 downloadFeed url = do
   r <- liftIO $ tryIOError $ simpleHttp url
   case r of
     Left e  -> return Nothing
     Right f -> return $ decode f
 
-loadFeed :: String -> ConfigIO (Maybe Xkcd)
+loadFeed :: String -> IO (Maybe Xkcd)
 loadFeed path = do
   r <- liftIO $ tryIOError $ B.readFile path
   case r of
     Left e  -> return Nothing
     Right f -> return $ decode f
 
-saveFeed :: String -> Xkcd -> ConfigIO (Maybe Xkcd)
+saveFeed :: String -> Xkcd -> IO (Maybe Xkcd)
 saveFeed path feed = do
   r <- liftIO $ tryIOError $ B.writeFile path $ encode feed
   case r of

@@ -24,6 +24,12 @@ data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
 type VBitmap = Var (Maybe (WxObject (CGDIObject (CBitmap ()))))
 
+type HXkcd = ReaderT Env IO
+
+data Env = Env {
+    baseDir :: FilePath
+}
+
 data Components = Components {
     f :: Frame(),
     titleContainer :: StaticText(),
@@ -96,13 +102,13 @@ hxkcd
        runReaderT (start components cursor) env
        return ()
   where
-    start :: Components -> IORef FeedIndex -> ConfigIO ()
+    start :: Components -> IORef FeedIndex -> HXkcd ()
     start components cursor = do
         env <- ask
         liftIO $ createDirectoryIfMissing False $ baseDir env
         getImage components cursor Last
 
-    getImage :: Components -> IORef FeedIndex -> Navigation -> ConfigIO ()
+    getImage :: Components -> IORef FeedIndex -> Navigation -> HXkcd ()
     getImage components ref navigation
           = do cursor@FeedIndex { index, lastIndex } <- liftIO $ readIORef ref
 
@@ -112,50 +118,55 @@ hxkcd
 
                      Previous -> return $ if index > 1 then cursor { index = index - 1 } else cursor
 
-                     Random -> liftIO $ getRandomNum lastIndex >>= \rn -> return $ cursor { index = rn }
+                     Random -> getRandomNum lastIndex >>= \rn -> return $ cursor { index = rn }
 
                      Next -> return $ if index < lastIndex then cursor { index = index + 1 } else cursor
 
-                     Last -> do env <- ask
-                                r <- updateAsLast (baseDir env) cursor components
-                                liftIO $ displayContent (baseDir env) components r
+                     Last -> do r <- updateAsLast cursor components
+                                displayContent components r
                                 let id = getNum $ fromJust r
                                 return $ cursor { lastIndex = id, index = id }
 
                liftIO $ print $ show cursor
                liftIO $ writeIORef ref cursor
 
-               unless (navigation == Last) $ do env <- ask
-                                                r <- fetchFeed index components navigation
-                                                liftIO $ displayContent (baseDir env) components r
+               unless (navigation == Last) $ fetchFeed index components navigation >>= displayContent components
                return ()
 
-    getRandomNum :: Int -> IO Int
-    getRandomNum upperLimit = getStdRandom (randomR (1, upperLimit))
+    getRandomNum :: Int -> HXkcd Int
+    getRandomNum upperLimit = liftIO $ getStdRandom (randomR (1, upperLimit))
 
-    updateAsLast :: String -> FeedIndex -> Components -> ConfigIO (Maybe Xkcd)
-    updateAsLast dir cursor components = do r <- downloadFeed $ getUrl 0
-                                            let f = fromJust r
-                                            saveFeed (getFeedPath dir $ getNum f) f -- to fix
-                                            return r
+    updateAsLast :: FeedIndex -> Components -> HXkcd (Maybe Xkcd)
+    updateAsLast cursor components = do r <- liftIO $ downloadFeed $ getUrl 0
+                                        let f = fromJust r
+                                        getFeedPath (getNum f) >>= \path -> liftIO $ saveFeed path f
+                                        return r
 
-    fetchFeed :: Int -> Components -> Navigation -> ConfigIO (Maybe Xkcd)
+    fetchFeed :: Int -> Components -> Navigation -> HXkcd (Maybe Xkcd)
     fetchFeed id components navigation
-          = do env <- ask
-               let fileName = getFeedPath (baseDir env) id
+          = do fileName <- getFeedPath id
                exists <- liftIO $ doesFileExist fileName
-               if exists then loadFeed fileName
-                         else downloadFeed (getUrl id) >>= \f -> saveFeed fileName $ fromJust f
+               if exists then liftIO $ loadFeed fileName
+                         else liftIO $ downloadFeed (getUrl id) >>= \f -> liftIO $ saveFeed fileName $ fromJust f
 
-    displayContent :: String -> Components -> Maybe Xkcd -> IO ()
-    displayContent baseDir components feed
-         = do let f = fromJust feed
+    getFeedPath :: Int -> HXkcd String
+    getFeedPath id = do env <- ask
+                        return $ baseDir env ++ show id ++ ".metadata.json"
+
+    displayContent :: Components -> Maybe Xkcd -> HXkcd ()
+    displayContent components feed
+         = do env <- ask
+              let f = fromJust feed
               let uri = getUri f
-              let fileName = getImagePath baseDir (getNum f) uri
-              exists <- doesFileExist fileName
-              unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
-              loadImage fileName >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
-              displayMetadata components f
+              fileName <- getImagePath (getNum f) uri
+              exists <- liftIO $ doesFileExist fileName
+              unless exists $ liftIO $ downloadImage uri >>= \i -> void (liftIO $ saveImage fileName $ fromJust i)
+              liftIO $ loadImage fileName >>= \i -> liftIO $ displayImage (sw components) (vbitmap components) (fromJust i)
+              liftIO $ displayMetadata components f
+
+    getImagePath :: Int -> String -> HXkcd String
+    getImagePath id uri = do env <- ask
+                             return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
 
     onPaint vbitmap dc viewArea
           = do logNullCreate -- to prevent iCCP warning dialog
