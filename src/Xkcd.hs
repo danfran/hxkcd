@@ -2,10 +2,8 @@
 module Xkcd where
 
 import Data.Aeson
-import Data.Maybe (fromJust)
 import Data.Text (Text, unpack)
 import Data.Time
-import Data.Time.Format
 import GHC.Generics
 import System.Locale
 

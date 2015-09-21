@@ -1,34 +1,46 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Control.Applicative
 import qualified Control.Monad.State as S
-import Control.Exception
 import Control.Monad
 import Control.Monad.Reader
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Foldable as F (forM_)
-import Data.IORef
 import Data.Maybe (fromJust)
-import Graphics.UI.WX hiding (when)
-import Graphics.UI.WXCore hiding (when)
+import Graphics.UI.WX hiding (when, Event)
+import Graphics.UI.WXCore hiding (when, Event)
 import Network.HTTP
+import Reactive.Banana
+import Reactive.Banana.WX
 import System.Directory
 import System.Random
 
 import Feed
 import Xkcd
+import Image
 
 data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
 type VBitmap = Var (Maybe (WxObject (CGDIObject (CBitmap ()))))
 
-type HXkcd = ReaderT Env IO
-
-data Env = Env {
+data AppEnv = AppEnv {
     baseDir :: FilePath
 }
+
+data AppState = AppState {
+    lastIndex :: Int,
+    index :: Int
+} deriving (Show)
+
+type HXkcd = ReaderT AppEnv (S.StateT AppState IO)
+
+newtype HXkcdApp a = HXkcdApp {
+    runHXkcd :: HXkcd a
+} deriving (Functor, Applicative, Monad, MonadIO, MonadReader AppEnv, S.MonadState AppState)
 
 data Components = Components {
     f :: Frame(),
@@ -38,6 +50,17 @@ data Components = Components {
     sw :: ScrolledWindow(),
     vbitmap :: VBitmap
 }
+
+data MenuItems = MenuItems {
+    frs :: MenuItem(),
+    prv :: MenuItem(),
+    rnd :: MenuItem(),
+    nxt :: MenuItem(),
+    lst :: MenuItem()
+}
+
+runAll :: HXkcdApp a -> AppEnv -> AppState -> IO (a, AppState)
+runAll k env = S.runStateT (runReaderT (runHXkcd k) env)
 
 main :: IO ()
 main = start hxkcd
@@ -67,127 +90,181 @@ hxkcd
        altContainer <- textCtrl p [ enabled := False, wrap := WrapNone ]
 
        let swSize = Size 750 480
-
        sw <- scrolledWindow p [ bgcolor := white, scrollRate := sz 10 10, virtualSize := swSize, fullRepaintOnResize := False ]
-
-       set f [ layout := container p $ margin 10 $ grid 1 4 [
-                                                             [ hfill (widget dateContainer) ],
-                                                             [ hfill (widget titleContainer) ],
-                                                             [ fill (widget altContainer) ],
-                                                             [ fill $ minsize swSize $ widget sw ]
-                                                            ]
-               , clientSize := sz 800 640
-             ]
-
-       -- set actions
-
-       cursor <- newIORef initCursor
-
        vbitmap <- variable [ value := Nothing ]
+
+       set f [ layout := container p $ margin 10 $ grid 1 4 [ [ hfill (widget dateContainer) ],
+                                                              [ hfill (widget titleContainer) ],
+                                                              [ fill (widget altContainer) ],
+                                                              [ fill $ minsize swSize $ widget sw ] ]
+               , clientSize := sz 800 640
+               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
 
        set sw [ on paint := onPaint vbitmap ]
 
-       let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
+       -- start
 
        hd <- getHomeDirectory
-       let env = Env $ hd ++ "/.hxkcd/"
+       let env = AppEnv $ hd ++ "/.hxkcd/"
+       let state = AppState { lastIndex = 0, index = 0 }
+       let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
+       let menuItems = MenuItems { frs = first, prv = previous, rnd = random, nxt = next, lst = last }
 
-       set f [ on (menu first)      := runReaderT (getImage components cursor First) env
-               , on (menu previous) := runReaderT (getImage components cursor Previous) env
-               , on (menu random)   := runReaderT (getImage components cursor Random) env
-               , on (menu next)     := runReaderT (getImage components cursor Next) env
-               , on (menu last)     := runReaderT (getImage components cursor Last) env
-               , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
-
-       runReaderT (start components cursor) env
+       runAll (start components menuItems) env state
        return ()
   where
-    start :: Components -> IORef FeedIndex -> HXkcd ()
-    start components cursor = do
+    start :: Components -> MenuItems -> HXkcdApp ()
+    start components m = do
         env <- ask
+        state <- S.get
         liftIO $ createDirectoryIfMissing False $ baseDir env
-        getImage components cursor Last
+        liftIO $ runReactiveNetwork components m
+--         liftIO $ set (f components) [ on (menu $ frs m)      := runAll (getImage components First) env state >> return ()
+--                                       , on (menu $ prv m)    := runAll (getImage components Previous) env state  >> return ()
+--                                       , on (menu $ rnd m)    := runAll (getImage components Random) env state  >> return ()
+--                                       , on (menu $ nxt m)    := runAll (getImage components Next) env state  >> return ()
+--                                       , on (menu $ lst m)    := runAll (getImage components Last) env state  >> return () ]
+--         getImage components Last
 
-    getImage :: Components -> IORef FeedIndex -> Navigation -> HXkcd ()
-    getImage components ref navigation
-          = do cursor@FeedIndex { index, lastIndex } <- liftIO $ readIORef ref
+    runReactiveNetwork :: Components -> MenuItems -> IO ()
+    runReactiveNetwork components m = do
 
-               cursor@FeedIndex { index, lastIndex }
-                <- case navigation of
-                     First -> return cursor { index = 1 }
+        let networkDescription :: forall t. Frameworks t => Moment t ()
+            networkDescription = do
 
-                     Previous -> return $ if index > 1 then cursor { index = index - 1 } else cursor
+                firstButton    <- event0 (menu $ frs m) command
+                previousButton <- event0 (menu $ prv m) command
+                randomButton   <- event0 (menu $ rnd m) command
+                nextButton     <- event0 (menu $ nxt m) command
+                lastButton     <- event0 (menu $ lst m) command
 
-                     Random -> getRandomNum lastIndex >>= \rn -> return $ cursor { index = rn }
+                let
+                    doFirst :: AppState -> AppState
+                    doFirst state = state { index = 1, lastIndex = lastIndex state }
 
-                     Next -> return $ if index < lastIndex then cursor { index = index + 1 } else cursor
+                    doPrevious :: AppState -> AppState
+                    doPrevious state = if index state > 1 then (state { index = index state - 1, lastIndex = lastIndex state }) else state
 
-                     Last -> do r <- updateAsLast cursor components
-                                displayContent components r
-                                let id = getNum $ fromJust r
-                                return $ cursor { lastIndex = id, index = id }
+                    doRandom :: AppState -> AppState
+                    doRandom state = state { index = getRandomNum $ lastIndex state , lastIndex = lastIndex state }
 
-               liftIO $ print $ show cursor
-               liftIO $ writeIORef ref cursor
+                    doNext :: AppState -> AppState
+                    doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
 
-               unless (navigation == Last) $ fetchFeed index components navigation >>= displayContent components
-               return ()
+                    doLast :: AppState -> AppState
+                    doLast state = updateAsLast >>= \id -> state { index = id, lastIndex = id }
 
-    getRandomNum :: Int -> HXkcd Int
-    getRandomNum upperLimit = liftIO $ getStdRandom (randomR (1, upperLimit))
+                    menuSelection :: Behavior t AppState
+--                     menuSelection = accumB doLast $
+                    menuSelection = accumB AppState { index = 1000, lastIndex = 1000 } $
+                                        unions [
+                                            doFirst <$ firstButton
+                                            , doPrevious <$ previousButton
+                                            , doRandom <$ randomButton
+                                            , doNext <$ nextButton
+                                            , doLast <$ lastButton
+                                            ]
+--                                         (doFirst <$ firstButton)
+--                                         `union` (doPrevious <$ previousButton)
+--                                         `union` (doRandom <$ randomButton)
+--                                         `union` (doNext <$ nextButton)
+--                                         `union` (doLast <$ lastButton)
 
-    updateAsLast :: FeedIndex -> Components -> HXkcd (Maybe Xkcd)
-    updateAsLast cursor components = do r <- liftIO $ downloadFeed $ getUrl 0
-                                        let f = fromJust r
-                                        getFeedPath (getNum f) >>= \path -> liftIO $ saveFeed path f
-                                        return r
+                reactimate $ displayContent components (index <$> menuSelection)
 
-    fetchFeed :: Int -> Components -> Navigation -> HXkcd (Maybe Xkcd)
-    fetchFeed id components navigation
-          = do fileName <- getFeedPath id
-               exists <- liftIO $ doesFileExist fileName
-               if exists then liftIO $ loadFeed fileName
-                         else liftIO $ downloadFeed (getUrl id) >>= \f -> liftIO $ saveFeed fileName $ fromJust f
+        network <- compile networkDescription
+        actuate network
 
-    getFeedPath :: Int -> HXkcd String
-    getFeedPath id = do env <- ask
-                        return $ baseDir env ++ show id ++ ".metadata.json"
+--     getImage :: Components -> Navigation -> IO ()
+--     getImage components navigation
+--          = do cursor@AppState { index, lastIndex } <- S.get
+--
+--               liftIO $ print $ show cursor
+--
+--               feed <- if navigation == Last then
+--                         do r <- updateAsLast
+--                            displayContent components r
+--                            let id = getNum $ fromJust r
+--                            S.put $ cursor { index = id, lastIndex = id }
+--                            return r
+--                       else
+--                         do case navigation of
+--                              First -> S.put cursor { index = 1, lastIndex = lastIndex }
+--                              Previous -> S.put $ if index > 1 then cursor { index = index - 1, lastIndex = lastIndex } else cursor
+--                              Random -> getRandomNum lastIndex >>= \rn -> S.put $ cursor { index = rn, lastIndex = lastIndex }
+--                              Next -> S.put $ if index < lastIndex then cursor { index = index + 1, lastIndex = lastIndex } else cursor
+--                            fetchFeed index
+--
+--               displayContent components feed
+--
+--               S.get >>= \s -> liftIO $ print $ show s
+--
+--               return ()
 
-    displayContent :: Components -> Maybe Xkcd -> HXkcd ()
+    getRandomNum :: Int -> Int
+    getRandomNum upperLimit = getStdRandom (randomR (1, upperLimit))
+
+    updateAsLast :: IO Int
+    updateAsLast
+        = do r <- downloadFeed $ getUrl 0
+             let f = fromJust r
+             let num = getNum f
+             getFeedPath num >>= \path -> saveFeed path f
+             return num
+
+    fetchFeed :: Int -> IO (Maybe Xkcd)
+    fetchFeed id
+         = do fileName <- getFeedPath id
+              exists <- doesFileExist fileName
+              if exists then loadFeed fileName
+                        else downloadFeed (getUrl id) >>= \f -> saveFeed fileName $ fromJust f
+
+--     getFeedPath :: Int -> HXkcdApp String
+--     getFeedPath id = do env <- ask
+--                         return $ baseDir env ++ show id ++ ".metadata.json"
+    getFeedPath :: Int -> String
+    getFeedPath id = ".hxkcd/" ++ show id ++ ".metadata.json"
+
+    displayContent :: Components -> Maybe Xkcd -> IO ()
     displayContent components feed
-         = do env <- ask
-              let f = fromJust feed
+         = do let f = fromJust feed
               let uri = getUri f
               fileName <- getImagePath (getNum f) uri
-              exists <- liftIO $ doesFileExist fileName
-              unless exists $ liftIO $ downloadImage uri >>= \i -> void (liftIO $ saveImage fileName $ fromJust i)
-              liftIO $ loadImage fileName >>= \i -> liftIO $ displayImage (sw components) (vbitmap components) (fromJust i)
-              liftIO $ displayMetadata components f
+              displayCachedContent components fileName uri
+              displayMetadata components f
 
-    getImagePath :: Int -> String -> HXkcd String
-    getImagePath id uri = do env <- ask
-                             return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
+    displayCachedContent :: Components -> String -> String -> IO ()
+    displayCachedContent components fileName uri
+         = do exists <- doesFileExist fileName
+              unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
+              loadImage fileName >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
+
+--     getImagePath :: Int -> String -> HXkcdApp String
+--     getImagePath id uri = do env <- ask
+--                              return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
+    getImagePath :: Int -> String -> IO String
+    getImagePath id uri = ".hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
 
     onPaint vbitmap dc viewArea
-          = do logNullCreate -- to prevent iCCP warning dialog
-               mbBitmap <- get vbitmap value
-               case mbBitmap of
-                 Nothing -> return ()
-                 Just bm -> drawBitmap dc bm pointZero False []
+         = do logNullCreate -- to prevent iCCP warning dialog
+              mbBitmap <- get vbitmap value
+              case mbBitmap of
+                Nothing -> return ()
+                Just bm -> drawBitmap dc bm pointZero False []
 
     closeImage vbitmap
-          = do mbBitmap <- swap vbitmap value Nothing
-               F.forM_ mbBitmap objectDelete
+         = do mbBitmap <- swap vbitmap value Nothing
+              F.forM_ mbBitmap objectDelete
 
     displayMetadata components feed
-          = do set (titleContainer components) [ text := getTitle feed ]
-               set (dateContainer components)  [ text := getDate feed ]
-               set (altContainer components)   [ text := getAlt feed ]
+         = do set (titleContainer components) [ text := getTitle feed ]
+              set (dateContainer components)  [ text := getDate feed ]
+              set (altContainer components)   [ text := getAlt feed ]
 
     displayImage sw vbitmap bm
-          = do closeImage vbitmap
-               set vbitmap [ value := Just bm ]
-               -- resize
-               bmsize <- get bm size
-               set sw [ virtualSize := bmsize ]
-               repaint sw
+         = do closeImage vbitmap
+              set vbitmap [ value := Just bm ]
+              -- resize
+              bmsize <- get bm size
+              set sw [ virtualSize := bmsize ]
+              repaint sw
