@@ -118,16 +118,11 @@ hxkcd
         env <- ask
         state <- S.get
         liftIO $ createDirectoryIfMissing False $ baseDir env
-        liftIO $ runReactiveNetwork components m
---         liftIO $ set (f components) [ on (menu $ frs m)      := runAll (getImage components First) env state >> return ()
---                                       , on (menu $ prv m)    := runAll (getImage components Previous) env state  >> return ()
---                                       , on (menu $ rnd m)    := runAll (getImage components Random) env state  >> return ()
---                                       , on (menu $ nxt m)    := runAll (getImage components Next) env state  >> return ()
---                                       , on (menu $ lst m)    := runAll (getImage components Last) env state  >> return () ]
---         getImage components Last
+        lastId <- liftIO updateAsLast
+        liftIO $ runReactiveNetwork components m AppState { index = lastId, lastIndex = lastId }
 
-    runReactiveNetwork :: Components -> MenuItems -> IO ()
-    runReactiveNetwork components m = do
+    runReactiveNetwork :: Components -> MenuItems -> AppState -> IO ()
+    runReactiveNetwork components m initialState = do
 
         let networkDescription :: forall t. Frameworks t => Moment t ()
             networkDescription = do
@@ -137,6 +132,9 @@ hxkcd
                 randomButton   <- event0 (menu $ rnd m) command
                 nextButton     <- event0 (menu $ nxt m) command
                 lastButton     <- event0 (menu $ lst m) command
+
+                fetchLastIndex <- fromPoll updateAsLast
+                getLastIndex <- changes fetchLastIndex
 
                 let
                     doFirst :: AppState -> AppState
@@ -152,23 +150,17 @@ hxkcd
                     doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
 
                     doLast :: AppState -> AppState
-                    doLast state = updateAsLast >>= \id -> state { index = id, lastIndex = id }
+                    doLast state = state { index = lastIndex state, lastIndex = lastIndex state }
 
                     menuSelection :: Behavior t AppState
---                     menuSelection = accumB doLast $
-                    menuSelection = accumB AppState { index = 1000, lastIndex = 1000 } $
+                    menuSelection = accumB initialState $
                                         unions [
                                             doFirst <$ firstButton
                                             , doPrevious <$ previousButton
                                             , doRandom <$ randomButton
                                             , doNext <$ nextButton
-                                            , doLast <$ lastButton
-                                            ]
---                                         (doFirst <$ firstButton)
---                                         `union` (doPrevious <$ previousButton)
---                                         `union` (doRandom <$ randomButton)
---                                         `union` (doNext <$ nextButton)
---                                         `union` (doLast <$ lastButton)
+                                            , doLast <$ getLastIndex <$ lastButton
+                                        ]
 
                 reactimate $ displayContent components (index <$> menuSelection)
 
