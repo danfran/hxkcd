@@ -134,7 +134,6 @@ hxkcd
                 lastButton     <- event0 (menu $ lst m) command
 
                 fetchLastIndex <- fromPoll updateAsLast
-                getLastIndex <- changes fetchLastIndex
 
                 let
                     doFirst :: AppState -> AppState
@@ -149,8 +148,8 @@ hxkcd
                     doNext :: AppState -> AppState
                     doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
 
-                    doLast :: AppState -> AppState
-                    doLast state = state { index = lastIndex state, lastIndex = lastIndex state }
+                    doLast :: Int -> AppState -> AppState
+                    doLast newIndex state = state { index = newIndex, lastIndex = newIndex }
 
                     menuSelection :: Behavior t AppState
                     menuSelection = accumB initialState $
@@ -159,10 +158,14 @@ hxkcd
                                             , doPrevious <$ previousButton
                                             , doRandom <$ randomButton
                                             , doNext <$ nextButton
-                                            , doLast <$ getLastIndex <$ lastButton
+                                            , doLast <$> fetchLastIndex <@ lastButton
                                         ]
 
-                reactimate $ displayContent components (index <$> menuSelection)
+                sink (titleContainer components) [ text :== show <$> reactimate $ fetchFeed <@> menuSelection  ]
+                sink (dateContainer components)  [ text :== getDate $ fetchFeed <$> menuSelection ]
+                sink (altContainer components)   [ text :== getAlt $ fetchFeed <$> menuSelection ]
+
+--                 reactimate $ displayContent components (index <$> menuSelection)
 
         network <- compile networkDescription
         actuate network
@@ -204,9 +207,10 @@ hxkcd
              getFeedPath num >>= \path -> saveFeed path f
              return num
 
-    fetchFeed :: Int -> IO (Maybe Xkcd)
-    fetchFeed id
-         = do fileName <- getFeedPath id
+    fetchFeed :: AppState -> IO (Maybe Xkcd)
+    fetchFeed state
+         = do let id = index state
+              fileName <- getFeedPath id
               exists <- doesFileExist fileName
               if exists then loadFeed fileName
                         else downloadFeed (getUrl id) >>= \f -> saveFeed fileName $ fromJust f
@@ -217,13 +221,14 @@ hxkcd
     getFeedPath :: Int -> String
     getFeedPath id = ".hxkcd/" ++ show id ++ ".metadata.json"
 
-    displayContent :: Components -> Maybe Xkcd -> IO ()
-    displayContent components feed
-         = do let f = fromJust feed
+    displayContent :: Components -> Int -> IO ()
+    displayContent components feedId
+         = do feed <- fetchFeed feedId
+              let f = fromJust feed
               let uri = getUri f
               fileName <- getImagePath (getNum f) uri
               displayCachedContent components fileName uri
-              displayMetadata components f
+--               displayMetadata components f
 
     displayCachedContent :: Components -> String -> String -> IO ()
     displayCachedContent components fileName uri
@@ -248,10 +253,10 @@ hxkcd
          = do mbBitmap <- swap vbitmap value Nothing
               F.forM_ mbBitmap objectDelete
 
-    displayMetadata components feed
-         = do set (titleContainer components) [ text := getTitle feed ]
-              set (dateContainer components)  [ text := getDate feed ]
-              set (altContainer components)   [ text := getAlt feed ]
+--     displayMetadata components feed
+--          = do set (titleContainer components) [ text := getTitle feed ]
+--               set (dateContainer components)  [ text := getDate feed ]
+--               set (altContainer components)   [ text := getAlt feed ]
 
     displayImage sw vbitmap bm
          = do closeImage vbitmap
