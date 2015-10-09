@@ -161,11 +161,18 @@ hxkcd
                                             , doLast <$> fetchLastIndex <@ lastButton
                                         ]
 
-                sink (titleContainer components) [ text :== show <$> reactimate $ fetchFeed <@> menuSelection  ]
-                sink (dateContainer components)  [ text :== getDate $ fetchFeed <$> menuSelection ]
-                sink (altContainer components)   [ text :== getAlt $ fetchFeed <$> menuSelection ]
+                    mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
+                    mapIO' remoteApi e1 = do
+                        (e2, handler) <- newEvent
+                        reactimate $ (\state -> remoteApi state >>= handler) <$> e1
+                        return e2
 
---                 reactimate $ displayContent components (index <$> menuSelection)
+                remoteValue2E <- mapIO' fetchFeed appStateE
+                let remoteValue2B = stepper Nothing $ Just <$> remoteValue2E
+
+                sink (titleContainer components) [ text :== show <$> remoteValue2B ]
+                sink (dateContainer components)  [ text :== show <$> remoteValue2B ]
+                sink (altContainer components)   [ text :== show <$> remoteValue2B ]
 
         network <- compile networkDescription
         actuate network
