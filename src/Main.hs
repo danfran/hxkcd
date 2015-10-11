@@ -23,6 +23,7 @@ import Feed
 import Xkcd
 import Image
 
+
 data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
 type VBitmap = Var (Maybe (WxObject (CGDIObject (CBitmap ()))))
@@ -162,46 +163,24 @@ hxkcd
                                         ]
 
                     mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
-                    mapIO' remoteApi e1 = do
+                    mapIO' ioFunc e1 = do
                         (e2, handler) <- newEvent
-                        reactimate $ (\state -> remoteApi state >>= handler) <$> e1
+--                         reactimate $ (\state -> ioFunc state >>= handler) <$> e1
+                        reactimate $ (ioFunc >=> handler) <$> e1
                         return e2
 
-                remoteValue2E <- mapIO' fetchFeed appStateE
-                let remoteValue2B = stepper Nothing $ Just <$> remoteValue2E
+                fetchFeed2E <- mapIO' fetchFeed appStateE
+                let fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
 
-                sink (titleContainer components) [ text :== show <$> remoteValue2B ]
-                sink (dateContainer components)  [ text :== show <$> remoteValue2B ]
-                sink (altContainer components)   [ text :== show <$> remoteValue2B ]
+                fetchImage2E <- mapIO' fetchImage fetchFeed2E
+                let fetchImage2B = stepper Nothing $ Just <$> fetchImage2E
+
+                sink (titleContainer components) [ text :== show <$> fetchFeed2B ]
+                sink (dateContainer components)  [ text :== show <$> fetchFeed2B ]
+                sink (altContainer components)   [ text :== show <$> fetchFeed2B ]
 
         network <- compile networkDescription
         actuate network
-
---     getImage :: Components -> Navigation -> IO ()
---     getImage components navigation
---          = do cursor@AppState { index, lastIndex } <- S.get
---
---               liftIO $ print $ show cursor
---
---               feed <- if navigation == Last then
---                         do r <- updateAsLast
---                            displayContent components r
---                            let id = getNum $ fromJust r
---                            S.put $ cursor { index = id, lastIndex = id }
---                            return r
---                       else
---                         do case navigation of
---                              First -> S.put cursor { index = 1, lastIndex = lastIndex }
---                              Previous -> S.put $ if index > 1 then cursor { index = index - 1, lastIndex = lastIndex } else cursor
---                              Random -> getRandomNum lastIndex >>= \rn -> S.put $ cursor { index = rn, lastIndex = lastIndex }
---                              Next -> S.put $ if index < lastIndex then cursor { index = index + 1, lastIndex = lastIndex } else cursor
---                            fetchFeed index
---
---               displayContent components feed
---
---               S.get >>= \s -> liftIO $ print $ show s
---
---               return ()
 
     getRandomNum :: Int -> Int
     getRandomNum upperLimit = getStdRandom (randomR (1, upperLimit))
@@ -225,27 +204,25 @@ hxkcd
 --     getFeedPath :: Int -> HXkcdApp String
 --     getFeedPath id = do env <- ask
 --                         return $ baseDir env ++ show id ++ ".metadata.json"
+
     getFeedPath :: Int -> String
     getFeedPath id = ".hxkcd/" ++ show id ++ ".metadata.json"
 
-    displayContent :: Components -> Int -> IO ()
-    displayContent components feedId
-         = do feed <- fetchFeed feedId
-              let f = fromJust feed
+    displayContent :: Components -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
+    displayContent components feed
+         = do let f = fromJust feed
               let uri = getUri f
               fileName <- getImagePath (getNum f) uri
-              displayCachedContent components fileName uri
---               displayMetadata components f
-
-    displayCachedContent :: Components -> String -> String -> IO ()
-    displayCachedContent components fileName uri
-         = do exists <- doesFileExist fileName
+              exists <- doesFileExist fileName
               unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
-              loadImage fileName >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
+              loadImage fileName -- >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
+--               displayCachedContent components fileName uri
+--               displayMetadata components f
 
 --     getImagePath :: Int -> String -> HXkcdApp String
 --     getImagePath id uri = do env <- ask
 --                              return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
+
     getImagePath :: Int -> String -> IO String
     getImagePath id uri = ".hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
 
@@ -259,11 +236,6 @@ hxkcd
     closeImage vbitmap
          = do mbBitmap <- swap vbitmap value Nothing
               F.forM_ mbBitmap objectDelete
-
---     displayMetadata components feed
---          = do set (titleContainer components) [ text := getTitle feed ]
---               set (dateContainer components)  [ text := getDate feed ]
---               set (altContainer components)   [ text := getAlt feed ]
 
     displayImage sw vbitmap bm
          = do closeImage vbitmap
