@@ -11,8 +11,8 @@ import Control.Monad.Reader
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Foldable as F (forM_)
 import Data.Maybe (fromJust)
-import Graphics.UI.WX hiding (when, Event)
-import Graphics.UI.WXCore hiding (when, Event)
+import Graphics.UI.WX hiding (Event, newEvent)
+import Graphics.UI.WXCore hiding (Event)
 import Network.HTTP
 import Reactive.Banana
 import Reactive.Banana.WX
@@ -90,13 +90,16 @@ hxkcd
        dateContainer <- staticText p []
        altContainer <- textCtrl p [ enabled := False, wrap := WrapNone ]
 
+       previousAsButton     <- button p [text := "Previous"]
+
        let swSize = Size 750 480
        sw <- scrolledWindow p [ bgcolor := white, scrollRate := sz 10 10, virtualSize := swSize, fullRepaintOnResize := False ]
        vbitmap <- variable [ value := Nothing ]
 
-       set f [ layout := container p $ margin 10 $ grid 1 4 [ [ hfill (widget dateContainer) ],
+       set f [ layout := container p $ margin 10 $ grid 1 5 [ [ hfill (widget dateContainer) ],
                                                               [ hfill (widget titleContainer) ],
                                                               [ fill (widget altContainer) ],
+                                                              [ fill (widget previousAsButton) ],
                                                               [ fill $ minsize swSize $ widget sw ] ]
                , clientSize := sz 800 640
                , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
@@ -111,92 +114,113 @@ hxkcd
        let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
        let menuItems = MenuItems { frs = first, prv = previous, rnd = random, nxt = next, lst = last }
 
-       runAll (start components menuItems) env state
+       lastId <- liftIO updateAsLast
+
+
+--       runAll (start components menuItems) env state
+--  where
+--    start :: Components -> MenuItems -> HXkcdApp ()
+--    start components m = do
+--        env <- ask
+--        state <- S.get
+--        liftIO $ createDirectoryIfMissing False $ baseDir env
+--        lastId <- liftIO updateAsLast
+--        liftIO $ runReactiveNetwork components m AppState { index = lastId, lastIndex = lastId }
+--
+--    runReactiveNetwork :: Components -> MenuItems -> AppState -> IO ()
+--    runReactiveNetwork components m initialState = do
+
+       let networkDescription :: forall t. Frameworks t => Moment t ()
+           networkDescription = do
+
+--               firstButton    <- event0 (frs m) command
+--               previousButton <- event0 (prv m) command
+--               randomButton   <- event0 (rnd m) command
+--               nextButton     <- event0 (nxt m) command
+--               lastButton     <- event0 (lst m) command
+
+               previousButton <- event0 previousAsButton command
+
+               fetchLastIndex <- fromPoll updateAsLast -- review this - expensive?
+               fetchRandomIndex <- fromPoll updateAsRandom -- review this - expensive?
+
+--               fetchImage2E <- mapIO' (fetchImage components) fetchFeed2E
+
+               let
+                   doFirst :: AppState -> AppState
+                   doFirst state = state { index = 1, lastIndex = lastIndex state }
+
+                   doPrevious :: AppState -> AppState
+                   doPrevious state = if index state > 1 then (state { index = index state - 1, lastIndex = lastIndex state }) else state
+
+                   doRandom :: Int -> AppState -> AppState
+                   doRandom randomIndex state = state { index = randomIndex, lastIndex = lastIndex state }
+
+                   doNext :: AppState -> AppState
+                   doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
+
+                   doLast :: Int -> AppState -> AppState
+                   doLast newIndex state = state { index = newIndex, lastIndex = newIndex }
+
+
+                   menuSelection :: Event t AppState
+                   menuSelection = accumE AppState { index = lastId, lastIndex = lastId } $ doPrevious <$ previousButton
+--                                       unions [
+--                                           doFirst <$ firstButton
+--                                           , doPrevious <$ previousButton
+--                                           , doRandom <$> fetchRandomIndex <@ randomButton
+--                                           , doNext <$ nextButton
+--                                           , doLast <$> fetchLastIndex <@ lastButton
+--                                       ]
+
+--                   fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
+--                   fetchImage2B = stepper Nothing $ Just <$> fetchImage2E
+
+                   mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
+                   mapIO' ioFunc e1
+                       = do (e2, handler) <- newEvent
+    --                        reactimate $ (\state -> ioFunc state >>= handler) <$> e1
+                            reactimate $ (ioFunc >=> handler) <$> e1
+                            return e2
+
+               fetchFeed2E <- mapIO' fetchFeed menuSelection
+               let fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
+
+--               sink (titleContainer components) [ text :== show <$> fetchFeed2B ]
+               sink titleContainer [ text :== show <$> fetchFeed2B ]
+--               sink (dateContainer components)  [ text :== show <$> fetchFeed2B ]
+--               sink (altContainer components)   [ text :== show <$> fetchFeed2B ]
+
+       network <- compile networkDescription
+       actuate network
+
        return ()
   where
-    start :: Components -> MenuItems -> HXkcdApp ()
-    start components m = do
-        env <- ask
-        state <- S.get
-        liftIO $ createDirectoryIfMissing False $ baseDir env
-        lastId <- liftIO updateAsLast
-        liftIO $ runReactiveNetwork components m AppState { index = lastId, lastIndex = lastId }
-
-    runReactiveNetwork :: Components -> MenuItems -> AppState -> IO ()
-    runReactiveNetwork components m initialState = do
-
-        let networkDescription :: forall t. Frameworks t => Moment t ()
-            networkDescription = do
-
-                firstButton    <- event0 (menu $ frs m) command
-                previousButton <- event0 (menu $ prv m) command
-                randomButton   <- event0 (menu $ rnd m) command
-                nextButton     <- event0 (menu $ nxt m) command
-                lastButton     <- event0 (menu $ lst m) command
-
-                fetchLastIndex <- fromPoll updateAsLast
-
-                let
-                    doFirst :: AppState -> AppState
-                    doFirst state = state { index = 1, lastIndex = lastIndex state }
-
-                    doPrevious :: AppState -> AppState
-                    doPrevious state = if index state > 1 then (state { index = index state - 1, lastIndex = lastIndex state }) else state
-
-                    doRandom :: AppState -> AppState
-                    doRandom state = state { index = getRandomNum $ lastIndex state , lastIndex = lastIndex state }
-
-                    doNext :: AppState -> AppState
-                    doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
-
-                    doLast :: Int -> AppState -> AppState
-                    doLast newIndex state = state { index = newIndex, lastIndex = newIndex }
-
-                    menuSelection :: Behavior t AppState
-                    menuSelection = accumB initialState $
-                                        unions [
-                                            doFirst <$ firstButton
-                                            , doPrevious <$ previousButton
-                                            , doRandom <$ randomButton
-                                            , doNext <$ nextButton
-                                            , doLast <$> fetchLastIndex <@ lastButton
-                                        ]
-
-                    mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
-                    mapIO' ioFunc e1 = do
-                        (e2, handler) <- newEvent
---                         reactimate $ (\state -> ioFunc state >>= handler) <$> e1
-                        reactimate $ (ioFunc >=> handler) <$> e1
-                        return e2
-
-                fetchFeed2E <- mapIO' fetchFeed appStateE
-                let fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
-
-                fetchImage2E <- mapIO' fetchImage fetchFeed2E
-                let fetchImage2B = stepper Nothing $ Just <$> fetchImage2E
-
-                sink (titleContainer components) [ text :== show <$> fetchFeed2B ]
-                sink (dateContainer components)  [ text :== show <$> fetchFeed2B ]
-                sink (altContainer components)   [ text :== show <$> fetchFeed2B ]
-
-        network <- compile networkDescription
-        actuate network
-
-    getRandomNum :: Int -> Int
+    getRandomNum :: Int -> IO Int
     getRandomNum upperLimit = getStdRandom (randomR (1, upperLimit))
+
+    -- bad - should not reuse the lastIndex call but the current AppState
+    updateAsRandom :: IO Int
+    updateAsRandom = updateAsLast >>= \lastIndex -> getStdRandom (randomR (1, lastIndex))
 
     updateAsLast :: IO Int
     updateAsLast
         = do r <- downloadFeed $ getUrl 0
              let f = fromJust r
              let num = getNum f
-             getFeedPath num >>= \path -> saveFeed path f
+--             getFeedPath num >>= \path -> saveFeed path f
+             saveFeed (getFeedPath num) f
              return num
 
     fetchFeed :: AppState -> IO (Maybe Xkcd)
     fetchFeed state
          = do let id = index state
-              fileName <- getFeedPath id
+              putStrLn $ "Executed fetch with id " ++ show id
+
+--              fileName <- getFeedPath id
+              let fileName = getFeedPath id
+              putStrLn $ "Get Feed file " ++ fileName
+
               exists <- doesFileExist fileName
               if exists then loadFeed fileName
                         else downloadFeed (getUrl id) >>= \f -> saveFeed fileName $ fromJust f
@@ -206,13 +230,14 @@ hxkcd
 --                         return $ baseDir env ++ show id ++ ".metadata.json"
 
     getFeedPath :: Int -> String
-    getFeedPath id = ".hxkcd/" ++ show id ++ ".metadata.json"
+    getFeedPath id = "/home/daniele/.hxkcd/" ++ show id ++ ".metadata.json"
 
-    displayContent :: Components -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
-    displayContent components feed
+    fetchImage :: Components -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
+    fetchImage components feed
          = do let f = fromJust feed
               let uri = getUri f
-              fileName <- getImagePath (getNum f) uri
+--              fileName <- getImagePath (getNum f) uri
+              let fileName = getImagePath (getNum f) uri
               exists <- doesFileExist fileName
               unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
               loadImage fileName -- >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
@@ -223,8 +248,8 @@ hxkcd
 --     getImagePath id uri = do env <- ask
 --                              return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
 
-    getImagePath :: Int -> String -> IO String
-    getImagePath id uri = ".hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
+    getImagePath :: Int -> String -> String
+    getImagePath id uri = "~/.hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
 
     onPaint vbitmap dc viewArea
          = do logNullCreate -- to prevent iCCP warning dialog
