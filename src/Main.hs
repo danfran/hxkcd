@@ -52,14 +52,6 @@ data Components = Components {
     vbitmap :: VBitmap
 }
 
-data MenuItems = MenuItems {
-    frs :: MenuItem(),
-    prv :: MenuItem(),
-    rnd :: MenuItem(),
-    nxt :: MenuItem(),
-    lst :: MenuItem()
-}
-
 runAll :: HXkcdApp a -> AppEnv -> AppState -> IO (a, AppState)
 runAll k env = S.runStateT (runReaderT (runHXkcd k) env)
 
@@ -72,34 +64,31 @@ hxkcd
 
        p <- panel f []
 
-       file     <- menuPane      [ text := "&Menu" ]
-       first    <- menuItem file [ text := "&Start\tCtrl+S", help := "Load first image" ]
-       previous <- menuItem file [ text := "&Left\tCtrl+L", help := "Load previous image" ]
-       random   <- menuItem file [ text := "Ra&ndom\tCtrl+N", help := "Load random image" ]
-       next     <- menuItem file [ text := "&Right\tCtrl+R", help := "Load next image" ]
-       last     <- menuItem file [ text := "Las&t\tCtrl+T", help := "Load last image" ]
+       tbMenu     <- menuPane        [ text := "&Menu" ]
+       tbFirst    <- menuItem tbMenu [ text := "&Start\tCtrl+S", help := "Load first image" ]
+       tbPrevious <- menuItem tbMenu [ text := "&Left\tCtrl+L", help := "Load previous image" ]
+       tbRandom   <- menuItem tbMenu [ text := "Ra&ndom\tCtrl+N", help := "Load random image" ]
+       tbNext     <- menuItem tbMenu [ text := "&Right\tCtrl+R", help := "Load next image" ]
+       tbLast     <- menuItem tbMenu [ text := "Las&t\tCtrl+T", help := "Load last image" ]
 
        tbar <- toolBar f []
-       toolMenu tbar first    "First" "icons/start_left16.png" []
-       toolMenu tbar previous "Previous" "icons/left16.png"    []
-       toolMenu tbar random   "Random" "icons/random16.png"    []
-       toolMenu tbar next     "Next" "icons/right16.png"       []
-       toolMenu tbar last     "Last" "icons/end_right16.png"   []
+       toolMenu tbar tbFirst    "First" "icons/start_left16.png" []
+       toolMenu tbar tbPrevious "Previous" "icons/left16.png"    []
+       toolMenu tbar tbRandom   "Random" "icons/random16.png"    []
+       toolMenu tbar tbNext     "Next" "icons/right16.png"       []
+       toolMenu tbar tbLast     "Last" "icons/end_right16.png"   []
 
        titleContainer <- staticText p []
        dateContainer <- staticText p []
        altContainer <- textCtrl p [ enabled := False, wrap := WrapNone ]
 
-       previousAsButton     <- button p [text := "Previous"]
-
        let swSize = Size 750 480
        sw <- scrolledWindow p [ bgcolor := white, scrollRate := sz 10 10, virtualSize := swSize, fullRepaintOnResize := False ]
        vbitmap <- variable [ value := Nothing ]
 
-       set f [ layout := container p $ margin 10 $ grid 1 5 [ [ hfill (widget dateContainer) ],
+       set f [ layout := container p $ margin 10 $ grid 1 4 [ [ hfill (widget dateContainer) ],
                                                               [ hfill (widget titleContainer) ],
                                                               [ fill (widget altContainer) ],
-                                                              [ fill (widget previousAsButton) ],
                                                               [ fill $ minsize swSize $ widget sw ] ]
                , clientSize := sz 800 640
                , on closing :~ \previous -> do { closeImage vbitmap; previous } ]
@@ -112,7 +101,7 @@ hxkcd
        let env = AppEnv $ hd ++ "/.hxkcd/"
        let state = AppState { lastIndex = 0, index = 0 }
        let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
-       let menuItems = MenuItems { frs = first, prv = previous, rnd = random, nxt = next, lst = last }
+--       let menuItems = MenuItems { frs = first, prv = previous, rnd = random, nxt = next, lst = last }
 
        lastId <- liftIO updateAsLast
 
@@ -133,13 +122,11 @@ hxkcd
        let networkDescription :: forall t. Frameworks t => Moment t ()
            networkDescription = do
 
---               firstButton    <- event0 (frs m) command
---               previousButton <- event0 (prv m) command
---               randomButton   <- event0 (rnd m) command
---               nextButton     <- event0 (nxt m) command
---               lastButton     <- event0 (lst m) command
-
-               previousButton <- event0 previousAsButton command
+               firstButton    <- event0 f (menu tbFirst)
+               previousButton <- event0 f (menu tbPrevious)
+               randomButton   <- event0 f (menu tbRandom)
+               nextButton     <- event0 f (menu tbNext)
+               lastButton     <- event0 f (menu tbLast)
 
                fetchLastIndex <- fromPoll updateAsLast -- review this - expensive?
                fetchRandomIndex <- fromPoll updateAsRandom -- review this - expensive?
@@ -164,14 +151,14 @@ hxkcd
 
 
                    menuSelection :: Event t AppState
-                   menuSelection = accumE AppState { index = lastId, lastIndex = lastId } $ doPrevious <$ previousButton
---                                       unions [
---                                           doFirst <$ firstButton
---                                           , doPrevious <$ previousButton
---                                           , doRandom <$> fetchRandomIndex <@ randomButton
---                                           , doNext <$ nextButton
---                                           , doLast <$> fetchLastIndex <@ lastButton
---                                       ]
+                   menuSelection = accumE AppState { index = lastId, lastIndex = lastId } $
+                                       unions [
+                                           doFirst <$ firstButton
+                                           , doPrevious <$ previousButton
+                                           , doRandom <$> fetchRandomIndex <@ randomButton
+                                           , doNext <$ nextButton
+                                           , doLast <$> fetchLastIndex <@ lastButton
+                                       ]
 
 --                   fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
 --                   fetchImage2B = stepper Nothing $ Just <$> fetchImage2E
@@ -179,7 +166,6 @@ hxkcd
                    mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
                    mapIO' ioFunc e1
                        = do (e2, handler) <- newEvent
-    --                        reactimate $ (\state -> ioFunc state >>= handler) <$> e1
                             reactimate $ (ioFunc >=> handler) <$> e1
                             return e2
 
