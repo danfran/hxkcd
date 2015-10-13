@@ -52,6 +52,14 @@ data Components = Components {
     vbitmap :: VBitmap
 }
 
+--data MenuItems = MenuItems {
+--    frs :: MenuItem(),
+--    prv :: MenuItem(),
+--    rnd :: MenuItem(),
+--    nxt :: MenuItem(),
+--    lst :: MenuItem()
+--}
+
 runAll :: HXkcdApp a -> AppEnv -> AppState -> IO (a, AppState)
 runAll k env = S.runStateT (runReaderT (runHXkcd k) env)
 
@@ -170,12 +178,11 @@ hxkcd
                             return e2
 
                fetchFeed2E <- mapIO' fetchFeed menuSelection
-               let fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
+               let fetchFeed2B = stepper Nothing $ fetchFeed2E
 
---               sink (titleContainer components) [ text :== show <$> fetchFeed2B ]
-               sink titleContainer [ text :== show <$> fetchFeed2B ]
---               sink (dateContainer components)  [ text :== show <$> fetchFeed2B ]
---               sink (altContainer components)   [ text :== show <$> fetchFeed2B ]
+               sink dateContainer  [ text :== show <$> (maybe "error" getDate)  <$> fetchFeed2B ]
+               sink titleContainer [ text :== show <$> (maybe "error" getTitle) <$> fetchFeed2B ]
+               sink altContainer   [ text :== show <$> (maybe "error" getAlt)   <$> fetchFeed2B ]
 
        network <- compile networkDescription
        actuate network
