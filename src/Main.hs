@@ -8,7 +8,6 @@ import qualified Data.Foldable as F (forM_)
 import Data.Maybe (fromJust)
 import Graphics.UI.WX hiding (Event, newEvent)
 import Graphics.UI.WXCore hiding (Event)
-import Network.HTTP
 import Reactive.Banana
 import Reactive.Banana.WX
 import System.Directory
@@ -28,14 +27,6 @@ data AppState = AppState {
     index :: Int
 } deriving (Show)
 
-data Components = Components {
-    f :: Frame(),
-    titleContainer :: StaticText(),
-    dateContainer :: StaticText(),
-    altContainer :: TextCtrl(),
-    sw :: ScrolledWindow(),
-    vbitmap :: VBitmap
-}
 
 main :: IO ()
 main = start hxkcd
@@ -55,11 +46,11 @@ hxkcd
        tbLast     <- menuItem tbMenu [ text := "Las&t\tCtrl+T", help := "Load last image" ]
 
        tbar <- toolBar f []
-       toolMenu tbar tbFirst    "First" "icons/start_left16.png" []
-       toolMenu tbar tbPrevious "Previous" "icons/left16.png"    []
-       toolMenu tbar tbRandom   "Random" "icons/random16.png"    []
-       toolMenu tbar tbNext     "Next" "icons/right16.png"       []
-       toolMenu tbar tbLast     "Last" "icons/end_right16.png"   []
+       _ <- toolMenu tbar tbFirst    "First" "icons/start_left16.png" []
+       _ <- toolMenu tbar tbPrevious "Previous" "icons/left16.png"    []
+       _ <- toolMenu tbar tbRandom   "Random" "icons/random16.png"    []
+       _ <- toolMenu tbar tbNext     "Next" "icons/right16.png"       []
+       _ <- toolMenu tbar tbLast     "Last" "icons/end_right16.png"   []
 
        titleContainer <- staticText p []
        dateContainer <- staticText p []
@@ -85,8 +76,6 @@ hxkcd
 
        lastId <- updateAsLast baseDir
        let initialState = AppState { lastIndex = lastId, index = lastId }
-
-       let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
 
        -- start frp
 
@@ -135,24 +124,21 @@ hxkcd
                             return e2
 
                fetchFeed2E <- mapIO' (fetchFeed baseDir) menuSelection
-               let fetchFeed2B = stepper Nothing $ fetchFeed2E
+               let fetchFeed2B = stepper Nothing fetchFeed2E
 
-               fetchImage2E <- mapIO' (fetchImage components baseDir) fetchFeed2E
+               fetchImage2E <- mapIO' (fetchImage baseDir) fetchFeed2E
 
-               sink dateContainer  [ text :== show <$> (maybe "error" getDate)  <$> fetchFeed2B ]
-               sink titleContainer [ text :== show <$> (maybe "error" getTitle) <$> fetchFeed2B ]
-               sink altContainer   [ text :== show <$> (maybe "error" getAlt)   <$> fetchFeed2B ]
+               sink dateContainer  [ text :== maybe "error" getDate  <$> fetchFeed2B ]
+               sink titleContainer [ text :== maybe "error" getTitle <$> fetchFeed2B ]
+               sink altContainer   [ text :== maybe "error" getAlt   <$> fetchFeed2B ]
 
-               reactimate $ (displayImage sw vbitmap) <$> fromJust <$> fetchImage2E
+               reactimate $ displayImage sw vbitmap <$> fromJust <$> fetchImage2E
 
        network <- compile networkDescription
        actuate network
 
        return ()
   where
-    getRandomNum :: Int -> IO Int
-    getRandomNum upperLimit = getStdRandom (randomR (1, upperLimit))
-
     -- bad - should not reuse the lastIndex call but the current AppState
     updateAsRandom :: String -> IO Int
     updateAsRandom baseDir = updateAsLast baseDir >>= \lastIndex -> getStdRandom (randomR (1, lastIndex))
@@ -162,25 +148,25 @@ hxkcd
         = do r <- downloadFeed $ getUrl 0
              let f = fromJust r
              let num = getNum f
-             saveFeed (getFeedPath baseDir num) f
+             _ <- saveFeed (getFeedPath baseDir num) f
              return num
 
     fetchFeed :: String -> AppState -> IO (Maybe Xkcd)
     fetchFeed baseDir state
-         = do let id = index state
-              let fileName = getFeedPath baseDir id
-              putStrLn $ "Executed fetch with id " ++ show id
+         = do let currentId = index state
+              let fileName = getFeedPath baseDir currentId
+              putStrLn $ "Executed fetch with id " ++ show currentId
               putStrLn $ "Get Feed file " ++ fileName
               exists <- doesFileExist fileName
               if exists then loadFeed fileName
-                        else downloadFeed (getUrl id) >>= \f -> saveFeed fileName $ fromJust f
+                        else downloadFeed (getUrl currentId) >>= \f -> saveFeed fileName $ fromJust f
 
     getFeedPath :: String -> Int -> String
-    getFeedPath baseDir id = baseDir ++ show id ++ ".metadata.json"
+    getFeedPath baseDir currentId = baseDir ++ show currentId ++ ".metadata.json"
 
-    fetchImage :: Components -> String -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
-    fetchImage components baseDir feed
-         = do let f = fromJust feed
+    fetchImage :: String -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
+    fetchImage baseDir xkcdFeed
+         = do let f = fromJust xkcdFeed
               let uri = getUri f
               let fileName = getImagePath baseDir (getNum f) uri
               putStrLn ("Image saved here: " ++ fileName)
@@ -189,10 +175,10 @@ hxkcd
               loadImage fileName
 
     getImagePath :: String -> Int -> String -> String
-    getImagePath baseDir id uri = baseDir ++ show id ++ "-" ++ getFinalUrlPart uri
+    getImagePath baseDir currentId uri = baseDir ++ show currentId ++ "-" ++ getFinalUrlPart uri
 
-    onPaint vbitmap dc viewArea
-         = do logNullCreate -- to prevent iCCP warning dialog
+    onPaint vbitmap dc _ -- viewArea
+         = do _ <- logNullCreate -- to prevent iCCP warning dialog
               mbBitmap <- get vbitmap value
               case mbBitmap of
                 Nothing -> return ()
