@@ -1,8 +1,8 @@
 # HXkcd
 
-![Screenshot](screenshot.png)
-
 HXkcd is a simple client that reproduces the behaviour of the original website [Xkcd] and gives you the possibility to move back and forth across the comic images.
+
+![Screenshot](screenshot.png)
 
 The project is written in [Haskell] and follows the principles of [Functional Reactive Programming] using the library [Reactive-Banana].
 
