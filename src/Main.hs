@@ -111,7 +111,7 @@ hxkcd
        let components = Components { f, titleContainer, dateContainer, altContainer, sw, vbitmap }
 --       let menuItems = MenuItems { frs = first, prv = previous, rnd = random, nxt = next, lst = last }
 
-       lastId <- liftIO updateAsLast
+       lastId <- updateAsLast
 
 
 --       runAll (start components menuItems) env state
@@ -139,10 +139,7 @@ hxkcd
                fetchLastIndex <- fromPoll updateAsLast -- review this - expensive?
                fetchRandomIndex <- fromPoll updateAsRandom -- review this - expensive?
 
---               fetchImage2E <- mapIO' (fetchImage components) fetchFeed2E
-
-               let
-                   doFirst :: AppState -> AppState
+               let doFirst :: AppState -> AppState
                    doFirst state = state { index = 1, lastIndex = lastIndex state }
 
                    doPrevious :: AppState -> AppState
@@ -168,9 +165,6 @@ hxkcd
                                            , doLast <$> fetchLastIndex <@ lastButton
                                        ]
 
---                   fetchFeed2B = stepper Nothing $ Just <$> fetchFeed2E
---                   fetchImage2B = stepper Nothing $ Just <$> fetchImage2E
-
                    mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
                    mapIO' ioFunc e1
                        = do (e2, handler) <- newEvent
@@ -180,9 +174,13 @@ hxkcd
                fetchFeed2E <- mapIO' fetchFeed menuSelection
                let fetchFeed2B = stepper Nothing $ fetchFeed2E
 
+               fetchImage2E <- mapIO' (fetchImage components) fetchFeed2E
+
                sink dateContainer  [ text :== show <$> (maybe "error" getDate)  <$> fetchFeed2B ]
                sink titleContainer [ text :== show <$> (maybe "error" getTitle) <$> fetchFeed2B ]
                sink altContainer   [ text :== show <$> (maybe "error" getAlt)   <$> fetchFeed2B ]
+
+               reactimate $ (displayImage sw vbitmap) <$> fromJust <$> fetchImage2E
 
        network <- compile networkDescription
        actuate network
@@ -231,6 +229,9 @@ hxkcd
               let uri = getUri f
 --              fileName <- getImagePath (getNum f) uri
               let fileName = getImagePath (getNum f) uri
+
+              putStrLn ("Imnage saved here: " ++ fileName)
+
               exists <- doesFileExist fileName
               unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
               loadImage fileName -- >>= \i -> displayImage (sw components) (vbitmap components) (fromJust i)
@@ -242,7 +243,7 @@ hxkcd
 --                              return $ baseDir env ++ show id ++ "-" ++ getFinalUrlPart uri
 
     getImagePath :: Int -> String -> String
-    getImagePath id uri = "~/.hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
+    getImagePath id uri = "/home/daniele/.hxkcd/" ++ show id ++ "-" ++ getFinalUrlPart uri
 
     onPaint vbitmap dc viewArea
          = do logNullCreate -- to prevent iCCP warning dialog
