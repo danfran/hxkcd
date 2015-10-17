@@ -183,7 +183,7 @@ hxkcd
          = do let f = fromJust feed
               let uri = getUri f
               let fileName = getImagePath baseDir (getNum f) uri
-              putStrLn ("Imnage saved here: " ++ fileName)
+              putStrLn ("Image saved here: " ++ fileName)
               exists <- doesFileExist fileName
               unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
               loadImage fileName
