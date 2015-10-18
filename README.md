@@ -42,3 +42,4 @@ This might be not the most elegant solution at the moment (there are better alte
 [Functional Reactive Programming]:https://en.wikipedia.org/wiki/Functional_reactive_programming
 [Reactive-Banana]:https://wiki.haskell.org/Reactive-banana
 [Stack]:https://www.stackage.org/
+
