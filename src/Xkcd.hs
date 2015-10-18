@@ -5,6 +5,8 @@ import Data.Aeson
 import Data.Text (Text, unpack)
 import Data.Time
 import GHC.Generics
+import System.Locale
+
 
 data Xkcd = Xkcd {
     month :: !Text,
