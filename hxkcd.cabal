@@ -26,12 +26,12 @@ executable hxkcd
                        , bytestring
                        , network-uri
                        , HTTP
-                       , wx ==0.92.0.0
+                       , wx ==0.92.1.0
                        , wxcore ==0.92.1.0
                        , file-embed
                        , directory
                        , mtl
-                       , time
+                       , time ==1.4.2
                        , old-locale
                        , random
                        , transformers-base
