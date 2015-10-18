@@ -19,7 +19,7 @@ executable hxkcd
   main-is:             Main.hs
   -- other-modules:
   -- other-extensions:
-  build-depends:       base >=4.7 && <4.8
+  build-depends:       base >=4.7 && <4.9
                        , http-conduit
                        , aeson
                        , text
@@ -27,7 +27,7 @@ executable hxkcd
                        , network-uri
                        , HTTP
                        , wx ==0.92.0.0
-                       , wxcore ==0.92.0.0
+                       , wxcore ==0.92.1.0
                        , file-embed
                        , directory
                        , mtl

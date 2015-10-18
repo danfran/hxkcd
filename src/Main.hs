@@ -74,13 +74,14 @@ hxkcd
        hd <- getHomeDirectory
        let baseDir = hd ++ "/.hxkcd/"
 
-       lastId <- updateAsLast baseDir
-       let initialState = AppState { lastIndex = lastId, index = lastId }
+       let initialState = AppState { lastIndex = 0, index = 0 }
 
        -- start frp
 
-       let networkDescription :: forall t. Frameworks t => Moment t ()
-           networkDescription = do
+       let networkDescription :: forall t. Frameworks t => AddHandler Navigation -> Moment t ()
+           networkDescription initHandler = do
+
+               stateInitializer <- fromAddHandler initHandler
 
                firstButton    <- event0 f (menu tbFirst)
                previousButton <- event0 f (menu tbPrevious)
@@ -115,6 +116,7 @@ hxkcd
                                            , doRandom <$> fetchRandomIndex <@ randomButton
                                            , doNext <$ nextButton
                                            , doLast <$> fetchLastIndex <@ lastButton
+                                           , doLast <$> fetchLastIndex <@ stateInitializer
                                        ]
 
                    mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
@@ -134,10 +136,10 @@ hxkcd
 
                reactimate $ displayImage sw vbitmap <$> fromJust <$> fetchImage2E
 
-       network <- compile networkDescription
+       (addInitHandler, fireInit) <- newAddHandler
+       network <- compile $ networkDescription addInitHandler
        actuate network
-
-       return ()
+       fireInit Last
   where
     -- bad - should not reuse the lastIndex call but the current AppState
     updateAsRandom :: String -> IO Int
@@ -155,8 +157,7 @@ hxkcd
     fetchFeed baseDir state
          = do let currentId = index state
               let fileName = getFeedPath baseDir currentId
-              putStrLn $ "Executed fetch with id " ++ show currentId
-              putStrLn $ "Get Feed file " ++ fileName
+              putStrLn $ "Executing the fetch with id " ++ show currentId ++ " to get the feed file " ++ fileName
               exists <- doesFileExist fileName
               if exists then loadFeed fileName
                         else downloadFeed (getUrl currentId) >>= \f -> saveFeed fileName $ fromJust f
@@ -169,7 +170,7 @@ hxkcd
          = do let f = fromJust xkcdFeed
               let uri = getUri f
               let fileName = getImagePath baseDir (getNum f) uri
-              putStrLn ("Image saved here: " ++ fileName)
+              putStrLn $ "Image saved in " ++ fileName
               exists <- doesFileExist fileName
               unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
               loadImage fileName
@@ -177,6 +178,7 @@ hxkcd
     getImagePath :: String -> Int -> String -> String
     getImagePath baseDir currentId uri = baseDir ++ show currentId ++ "-" ++ getFinalUrlPart uri
 
+    onPaint :: VBitmap -> DC () -> Rect -> IO ()
     onPaint vbitmap dc _ -- viewArea
          = do _ <- logNullCreate -- to prevent iCCP warning dialog
               mbBitmap <- get vbitmap value
@@ -184,10 +186,12 @@ hxkcd
                 Nothing -> return ()
                 Just bm -> drawBitmap dc bm pointZero False []
 
+    closeImage :: VBitmap -> IO ()
     closeImage vbitmap
          = do mbBitmap <- swap vbitmap value Nothing
               F.forM_ mbBitmap objectDelete
 
+    displayImage :: ScrolledWindow() -> VBitmap -> Bitmap () -> IO ()
     displayImage sw vbitmap bm
          = do closeImage vbitmap
               set vbitmap [ value := Just bm ]
