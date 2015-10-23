@@ -31,7 +31,7 @@ executable hxkcd
                        , file-embed
                        , directory
                        , mtl
-                       , time ==1.4.2
+                       , time ==1.5.0.1
                        , old-locale
                        , random
                        , transformers-base
