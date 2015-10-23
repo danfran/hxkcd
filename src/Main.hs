@@ -11,22 +11,15 @@ import Graphics.UI.WXCore hiding (Event)
 import Reactive.Banana
 import Reactive.Banana.WX
 import System.Directory
-import System.Random
 
 import Feed
-import Xkcd
-import Image
-
+import FeedIO
+import ImageIO
+import AppState
 
 data Navigation = First | Previous | Random | Next | Last deriving (Eq)
 
 type VBitmap = Var (Maybe (WxObject (CGDIObject (CBitmap ()))))
-
-data AppState = AppState {
-    lastIndex :: Int,
-    index :: Int
-} deriving (Show)
-
 
 main :: IO ()
 main = start hxkcd
@@ -74,8 +67,6 @@ hxkcd
        hd <- getHomeDirectory
        let baseDir = hd ++ "/.hxkcd/"
 
-       let initialState = AppState { lastIndex = 0, index = 0 }
-
        -- start frp
 
        let networkDescription :: forall t. Frameworks t => AddHandler Navigation -> Moment t ()
@@ -92,23 +83,7 @@ hxkcd
                fetchLastIndex <- fromPoll $ updateAsLast baseDir -- review this - expensive?
                fetchRandomIndex <- fromPoll $ updateAsRandom baseDir -- review this - expensive?
 
-               let doFirst :: AppState -> AppState
-                   doFirst state = state { index = 1, lastIndex = lastIndex state }
-
-                   doPrevious :: AppState -> AppState
-                   doPrevious state = if index state > 1 then (state { index = index state - 1, lastIndex = lastIndex state }) else state
-
-                   doRandom :: Int -> AppState -> AppState
-                   doRandom randomIndex state = state { index = randomIndex, lastIndex = lastIndex state }
-
-                   doNext :: AppState -> AppState
-                   doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state }) else state
-
-                   doLast :: Int -> AppState -> AppState
-                   doLast newIndex state = state { index = newIndex, lastIndex = newIndex }
-
-
-                   menuSelection :: Event t AppState
+               let menuSelection :: Event t AppState
                    menuSelection = accumE initialState $
                                        unions [
                                            doFirst <$ firstButton
@@ -125,10 +100,10 @@ hxkcd
                             reactimate $ (ioFunc >=> handler) <$> e1
                             return e2
 
-               fetchFeed2E <- mapIO' (fetchFeed baseDir) menuSelection
+               fetchFeed2E <- mapIO' (fetchFeed baseDir . index) menuSelection
                let fetchFeed2B = stepper Nothing fetchFeed2E
 
-               fetchImage2E <- mapIO' (fetchImage baseDir) fetchFeed2E
+               fetchImage2E <- mapIO' (fetchImage baseDir . fromJust) fetchFeed2E
 
                sink dateContainer  [ text :== maybe "error" getDate  <$> fetchFeed2B ]
                sink titleContainer [ text :== maybe "error" getTitle <$> fetchFeed2B ]
@@ -141,43 +116,6 @@ hxkcd
        actuate network
        fireInit Last
   where
-    -- bad - should not reuse the lastIndex call but the current AppState
-    updateAsRandom :: String -> IO Int
-    updateAsRandom baseDir = updateAsLast baseDir >>= \lastIndex -> getStdRandom (randomR (1, lastIndex))
-
-    updateAsLast :: String -> IO Int
-    updateAsLast baseDir
-        = do r <- downloadFeed $ getUrl 0
-             let f = fromJust r
-             let num = getNum f
-             _ <- saveFeed (getFeedPath baseDir num) f
-             return num
-
-    fetchFeed :: String -> AppState -> IO (Maybe Xkcd)
-    fetchFeed baseDir state
-         = do let currentId = index state
-              let fileName = getFeedPath baseDir currentId
-              putStrLn $ "Executing the fetch with id " ++ show currentId ++ " to get the feed file " ++ fileName
-              exists <- doesFileExist fileName
-              if exists then loadFeed fileName
-                        else downloadFeed (getUrl currentId) >>= \f -> saveFeed fileName $ fromJust f
-
-    getFeedPath :: String -> Int -> String
-    getFeedPath baseDir currentId = baseDir ++ show currentId ++ ".metadata.json"
-
-    fetchImage :: String -> Maybe Xkcd -> IO (Maybe (Bitmap ()))
-    fetchImage baseDir xkcdFeed
-         = do let f = fromJust xkcdFeed
-              let uri = getUri f
-              let fileName = getImagePath baseDir (getNum f) uri
-              putStrLn $ "Image saved in " ++ fileName
-              exists <- doesFileExist fileName
-              unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
-              loadImage fileName
-
-    getImagePath :: String -> Int -> String -> String
-    getImagePath baseDir currentId uri = baseDir ++ show currentId ++ "-" ++ getFinalUrlPart uri
-
     onPaint :: VBitmap -> DC () -> Rect -> IO ()
     onPaint vbitmap dc _ -- viewArea
          = do _ <- logNullCreate -- to prevent iCCP warning dialog
