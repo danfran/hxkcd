@@ -36,8 +36,8 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
           nextButton     <- event0 f (menu tbNext)
           lastButton     <- event0 f (menu tbLast)
 
-          fetchLastIndex <- fromPoll $ updateAsLast baseDir -- review this - expensive?
-          fetchRandomIndex <- fromPoll $ updateAsRandom baseDir -- review this - expensive?
+          fetchLastIndex <- fromPoll $ fetchLastFeed baseDir -- review this - expensive?
+          fetchRandomIndex <- fromPoll $ fetchRandomFeed baseDir -- review this - expensive?
 
           let menuSelection :: Event t AppState
               menuSelection = accumE initialState $

@@ -1,5 +1,4 @@
-{-# LANGUAGE NamedFieldPuns #-}
-module ImageIO where
+module ImageIO (fetchImage) where
 
 import Control.Monad.Reader
 import qualified Data.ByteString.Lazy as B
@@ -9,7 +8,16 @@ import Network.HTTP.Conduit (simpleHttp)
 import System.Directory
 import System.IO.Error
 
-import Feed -- to be removed & export module functions to set
+import Feed
+
+fetchImage :: String -> Feed -> IO (Maybe (Bitmap ()))
+fetchImage baseDir f
+     = do let uri = getUri f
+          let fileName = getImagePath baseDir uri (getNum f)
+          putStrLn $ "Image saved in " ++ fileName
+          exists <- doesFileExist fileName
+          unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
+          loadImage fileName
 
 downloadImage :: String -> IO (Maybe B.ByteString)
 downloadImage uri = do
@@ -32,16 +40,6 @@ saveImage path image = do
     Left _  -> return Nothing
     Right _ -> return $ Just image
 
-fetchImage :: String -> Feed -> IO (Maybe (Bitmap ()))
-fetchImage baseDir f
-     = do let uri = getUri f
-          let fileName = getImagePath baseDir uri (getNum f)
-          putStrLn $ "Image saved in " ++ fileName
-          exists <- doesFileExist fileName
-          unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
-          loadImage fileName
-
--- here and in FeedIO to be moved in Feed
 getImagePath :: String -> String -> Int -> String
 getImagePath baseDir uri currentId = baseDir ++ show currentId ++ "-" ++ getFinalUrlPart uri
 
