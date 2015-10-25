@@ -9,6 +9,7 @@ import Graphics.UI.WXCore hiding (Event)
 import Reactive.Banana
 import Reactive.Banana.WX
 import System.Directory
+import System.Random
 
 import Feed
 import AppState
@@ -24,11 +25,11 @@ appNetwork :: MenuItem() -> MenuItem() -> MenuItem() -> MenuItem() -> MenuItem()
 appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer dateContainer altContainer = do
   hd <- getHomeDirectory
   let baseDir = hd ++ "/.hxkcd/"
+  lastId <- getNum . fromJust <$> downloadFeed baseDir 0
+  let initialState = lastId
 
   let networkDescription :: forall t. Frameworks t => AddHandler Navigation -> Moment t ()
       networkDescription initHandler = do
-
-          stateInitializer <- fromAddHandler initHandler
 
           firstButton    <- event0 f (menu tbFirst)
           previousButton <- event0 f (menu tbPrevious)
@@ -36,18 +37,19 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
           nextButton     <- event0 f (menu tbNext)
           lastButton     <- event0 f (menu tbLast)
 
-          fetchLastIndex <- fromPoll $ fetchLastFeed baseDir -- review this - expensive?
-          fetchRandomIndex <- fromPoll $ fetchRandomFeed baseDir -- review this - expensive?
+          stateInitializer <- fromAddHandler initHandler
 
-          let menuSelection :: Event t AppState
+          fetchRandomIndex <- fromPoll $ getStdRandom (randomR (1, lastId))
+
+          let menuSelection :: Event t Int
               menuSelection = accumE initialState $
                                   unions [
                                       doFirst <$ firstButton
                                       , doPrevious <$ previousButton
                                       , doRandom <$> fetchRandomIndex <@ randomButton
-                                      , doNext <$ nextButton
-                                      , doLast <$> fetchLastIndex <@ lastButton
-                                      , doLast <$> fetchLastIndex <@ stateInitializer
+                                      , doNext lastId <$ nextButton
+                                      , doLast lastId <$ lastButton
+                                      , doLast lastId <$ stateInitializer
                                   ]
 
               mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
@@ -56,15 +58,10 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
                        reactimate $ (ioFunc >=> handler) <$> e1
                        return e2
 
-          fetchFeed2E <- mapIO' (fetchFeed baseDir . index) menuSelection
-          let fetchFeed2B = stepper Nothing fetchFeed2E
+          fetchFeed2E <- mapIO' (loadFeed baseDir) menuSelection
+          fetchImage2E <- mapIO' (loadImage baseDir . fromJust) fetchFeed2E
 
-          fetchImage2E <- mapIO' (fetchImage baseDir . fromJust) fetchFeed2E
-
-          sink dateContainer  [ text :== maybe "error" getDate  <$> fetchFeed2B ]
-          sink titleContainer [ text :== maybe "error" getTitle <$> fetchFeed2B ]
-          sink altContainer   [ text :== maybe "error" getAlt   <$> fetchFeed2B ]
-
+          reactimate $ displayMetadata <$> fromJust <$> fetchFeed2E
           reactimate $ displayImage <$> fromJust <$> fetchImage2E
 
   (addInitHandler, fireInit) <- newAddHandler
@@ -72,6 +69,12 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
   actuate network
   fireInit Last
   where
+    displayMetadata :: Feed -> IO ()
+    displayMetadata loadedFeed
+         = do set titleContainer [ text := getTitle loadedFeed ]
+              set dateContainer  [ text := getDate loadedFeed ]
+              set altContainer   [ text := getAlt loadedFeed ]
+
     displayImage :: Bitmap () -> IO ()
     displayImage bm
          = do closeImage vbitmap

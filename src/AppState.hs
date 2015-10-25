@@ -1,27 +1,18 @@
 module AppState where
 
-data AppState = AppState {
-    lastIndex :: Int,
-    index :: Int
-} deriving (Show)
+doFirst :: Int -> Int
+doFirst _ = 1
 
+doPrevious :: Int -> Int
+doPrevious currentId = if currentId > 1 then currentId - 1
+                       else currentId
 
-initialState :: AppState
-initialState = AppState { lastIndex = 0, index = 0 }
+doRandom :: Int -> Int -> Int
+doRandom randomId _ = randomId
 
-doFirst :: AppState -> AppState
-doFirst state = state { index = 1, lastIndex = lastIndex state }
+doNext :: Int -> Int -> Int
+doNext lastId currentId = if currentId < lastId then currentId + 1
+                          else currentId
 
-doPrevious :: AppState -> AppState
-doPrevious state = if index state > 1 then (state { index = index state - 1, lastIndex = lastIndex state })
-                   else state
-
-doRandom :: Int -> AppState -> AppState
-doRandom randomIndex state = state { index = randomIndex, lastIndex = lastIndex state }
-
-doNext :: AppState -> AppState
-doNext state = if index state < lastIndex state then (state { index = index state + 1, lastIndex = lastIndex state })
-               else state
-
-doLast :: Int -> AppState -> AppState
-doLast newIndex state = state { index = newIndex, lastIndex = newIndex }
+doLast :: Int -> Int -> Int
+doLast lastId _ = lastId

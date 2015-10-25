@@ -1,8 +1,7 @@
-module ImageIO (fetchImage) where
+module ImageIO (loadImage) where
 
-import Control.Monad.Reader
+import Control.Monad
 import qualified Data.ByteString.Lazy as B
-import Data.Maybe (fromJust)
 import Graphics.UI.WXCore
 import Network.HTTP.Conduit (simpleHttp)
 import System.Directory
@@ -10,32 +9,33 @@ import System.IO.Error
 
 import Feed
 
-fetchImage :: String -> Feed -> IO (Maybe (Bitmap ()))
-fetchImage baseDir f
-     = do let uri = getUri f
-          let fileName = getImagePath baseDir uri (getNum f)
-          putStrLn $ "Image saved in " ++ fileName
-          exists <- doesFileExist fileName
-          unless exists $ downloadImage uri >>= \i -> void (saveImage fileName $ fromJust i)
-          loadImage fileName
-
-downloadImage :: String -> IO (Maybe B.ByteString)
-downloadImage uri = do
-  r <- liftIO $ tryIOError $ simpleHttp uri
+loadImage :: String -> Feed -> IO (Maybe (Bitmap ()))
+loadImage baseDir f = do
+  let uri = getUri f
+  let fileName = getImagePath baseDir uri (getNum f)
+  putStrLn $ "Loading the image file " ++ fileName
+  exists <- doesFileExist fileName
+  -- I don't know how to convert ByteString to Bitmap
+  -- Maybe I should consider VBitmap -> WxObject?
+  unless exists $ void(downloadImage fileName uri)
+  -- Using unless as tryIOError doesn't switch if file not found
+  r <- tryIOError $ bitmapCreateFromFile fileName
   case r of
     Left _  -> return Nothing
-    Right f -> return $ Just f
+    Right i -> return $ Just i
 
-loadImage :: String -> IO (Maybe (Bitmap ()))
-loadImage path = do
-  r <- liftIO $ tryIOError $ bitmapCreateFromFile path
+downloadImage :: String -> String -> IO (Maybe B.ByteString)
+downloadImage fileName uri = do
+  putStrLn $ "Downloading the image file " ++ fileName
+  r <- tryIOError $ simpleHttp uri
   case r of
     Left _  -> return Nothing
-    Right f -> return $ Just f
+    Right i -> saveImage fileName i
 
 saveImage :: String -> B.ByteString -> IO (Maybe B.ByteString)
-saveImage path image = do
-  r <- liftIO $ tryIOError $ B.writeFile path image
+saveImage fileName image = do
+  putStrLn $ "Saving the image file " ++ fileName
+  r <- tryIOError $ B.writeFile fileName image
   case r of
     Left _  -> return Nothing
     Right _ -> return $ Just image
