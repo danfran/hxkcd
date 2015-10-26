@@ -5,6 +5,7 @@ import qualified Data.ByteString.Lazy as B
 import Graphics.UI.WXCore
 import Network.HTTP.Conduit (simpleHttp)
 import System.Directory
+import System.FilePath
 import System.IO.Error
 
 import Feed
@@ -40,8 +41,8 @@ saveImage fileName image = do
     Left _  -> return Nothing
     Right _ -> return $ Just image
 
-getImagePath :: String -> String -> Int -> String
-getImagePath baseDir uri currentId = baseDir ++ show currentId ++ "-" ++ getFinalUrlPart uri
+getImagePath :: String -> String -> Int -> FilePath
+getImagePath baseDir uri currentId = baseDir </> show currentId ++ "-" ++ getFinalUrlPart uri
 
 getFinalUrlPart :: String -> String
 getFinalUrlPart = reverse . takeWhile (/='/') . reverse

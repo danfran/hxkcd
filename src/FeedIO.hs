@@ -4,6 +4,7 @@ import Data.Aeson
 import Data.Maybe (fromJust)
 import qualified Data.ByteString.Lazy as B
 import Network.HTTP.Conduit (simpleHttp)
+import System.FilePath
 import System.IO.Error
 
 import Feed
@@ -41,5 +42,5 @@ getUrl n
     | n <= 0 = "http://xkcd.com/info.0.json"
     | otherwise = "http://xkcd.com/" ++ show n ++ "/info.0.json"
 
-getFeedPath :: String -> Int -> String
-getFeedPath baseDir currentId = baseDir ++ show currentId ++ ".metadata.json"
+getFeedPath :: String -> Int -> FilePath
+getFeedPath baseDir currentId = baseDir </> show currentId ++ ".metadata.json"

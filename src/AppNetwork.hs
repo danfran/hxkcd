@@ -9,6 +9,7 @@ import Graphics.UI.WXCore hiding (Event)
 import Reactive.Banana
 import Reactive.Banana.WX
 import System.Directory
+import System.FilePath
 import System.Random
 
 import Feed
@@ -24,7 +25,7 @@ appNetwork :: MenuItem() -> MenuItem() -> MenuItem() -> MenuItem() -> MenuItem()
                       -> Frame() -> ScrolledWindow() -> VBitmap -> StaticText() -> StaticText() -> TextCtrl() -> IO ()
 appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer dateContainer altContainer = do
   hd <- getHomeDirectory
-  let baseDir = hd ++ "/.hxkcd/"
+  let baseDir = hd </> ".hxkcd"
   lastId <- getNum . fromJust <$> downloadFeed baseDir 0
   let initialState = lastId
 
