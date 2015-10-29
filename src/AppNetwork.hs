@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module AppNetwork where
 
-import Control.Monad
 import qualified Data.Foldable as F (forM_)
 import Data.Maybe (fromJust)
 import Graphics.UI.WX hiding (Event, newEvent)
@@ -29,7 +28,7 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
   lastId <- getNum . fromJust <$> downloadFeed baseDir 0
   let initialState = lastId
 
-  let networkDescription :: forall t. Frameworks t => AddHandler Navigation -> Moment t ()
+  let networkDescription :: AddHandler Navigation -> MomentIO ()
       networkDescription initHandler = do
 
           firstButton    <- event0 f (menu tbFirst)
@@ -42,25 +41,19 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
 
           fetchRandomIndex <- fromPoll $ getStdRandom (randomR (1, lastId))
 
-          let menuSelection :: Event t Int
-              menuSelection = accumE initialState $
-                                  unions [
-                                      doFirst <$ firstButton
-                                      , doPrevious <$ previousButton
-                                      , doRandom <$> fetchRandomIndex <@ randomButton
-                                      , doNext lastId <$ nextButton
-                                      , doLast lastId <$ lastButton
-                                      , doLast lastId <$ stateInitializer
-                                  ]
+          (menuSelection :: Event Int)
+              <- accumE initialState $
+                  unions [
+                      doFirst <$ firstButton
+                      , doPrevious <$ previousButton
+                      , doRandom <$> fetchRandomIndex <@ randomButton
+                      , doNext lastId <$ nextButton
+                      , doLast lastId <$ lastButton
+                      , doLast lastId <$ stateInitializer
+                  ]
 
-              mapIO' :: (a -> IO b) -> Event t a -> Moment t (Event t b)
-              mapIO' ioFunc e1
-                  = do (e2, handler) <- newEvent
-                       reactimate $ (ioFunc >=> handler) <$> e1
-                       return e2
-
-          fetchFeed2E <- mapIO' (loadFeed baseDir) menuSelection
-          fetchImage2E <- mapIO' (loadImage baseDir . fromJust) fetchFeed2E
+          fetchFeed2E <- mapEventIO (loadFeed baseDir) menuSelection
+          fetchImage2E <- mapEventIO (loadImage baseDir . fromJust) fetchFeed2E
 
           reactimate $ displayMetadata <$> fromJust <$> fetchFeed2E
           reactimate $ displayImage <$> fromJust <$> fetchImage2E
