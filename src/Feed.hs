@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 module Feed where
 
@@ -5,6 +6,9 @@ import Data.Aeson
 import Data.Text (Text, unpack)
 import Data.Time
 import GHC.Generics
+#if ! MIN_VERSION_time(1,5,0)
+import System.Locale
+#endif
 
 data Feed = Feed {
     month :: !Text,
