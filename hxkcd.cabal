@@ -26,8 +26,8 @@ executable hxkcd
                        , bytestring
                        , network-uri
                        , HTTP
-                       , wx ==0.92.1.0
-                       , wxcore ==0.92.1.0
+                       , wx
+                       , wxcore
                        , file-embed
                        , directory
                        , filepath
@@ -36,8 +36,8 @@ executable hxkcd
                        , old-locale
                        , random
                        , transformers-base
-                       , reactive-banana ==1.0.0.0
-                       , reactive-banana-wx ==1.0.0.0
+                       , reactive-banana
+                       , reactive-banana-wx
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -O2

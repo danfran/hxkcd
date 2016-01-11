@@ -46,6 +46,9 @@ hxkcd
 
        appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer dateContainer altContainer
   where
+    closeImage :: VBitmap -> IO ()
+    closeImage vbm = swap vbm value Nothing >>= mapM_ objectDelete
+
     onPaint :: VBitmap -> DC () -> Rect -> IO ()
     onPaint vbitmap dc _ -- viewArea
          = do _ <- logNullCreate -- to prevent iCCP warning dialog

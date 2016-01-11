@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module AppNetwork where
 
-import qualified Data.Foldable as F (forM_)
 import Data.Maybe (fromJust)
 import Graphics.UI.WX hiding (Event, newEvent)
 import Graphics.UI.WXCore hiding (Event)
@@ -62,23 +61,21 @@ appNetwork tbFirst tbPrevious tbRandom tbNext tbLast f sw vbitmap titleContainer
   network <- compile $ networkDescription addInitHandler
   actuate network
   fireInit Last
-  where
-    displayMetadata :: Feed -> IO ()
-    displayMetadata loadedFeed
-         = do set titleContainer [ text := getTitle loadedFeed ]
-              set dateContainer  [ text := getDate loadedFeed ]
-              set altContainer   [ text := getAlt loadedFeed ]
+   where
+     displayMetadata :: Feed -> IO ()
+     displayMetadata loadedFeed
+          = do set titleContainer [ text := getTitle loadedFeed ]
+               set dateContainer  [ text := getDate loadedFeed ]
+               set altContainer   [ text := getAlt loadedFeed ]
 
-    displayImage :: Bitmap () -> IO ()
-    displayImage bm
-         = do closeImage vbitmap
-              set vbitmap [ value := Just bm ]
-              -- resize
-              bmsize <- get bm size
-              set sw [ virtualSize := bmsize ]
-              repaint sw
+     displayImage :: Bitmap () -> IO ()
+     displayImage bm
+          = do closeImage vbitmap
+               set vbitmap [ value := Just bm ]
+               -- resize
+               bmsize <- get bm size
+               set sw [ virtualSize := bmsize ]
+               repaint sw
 
-closeImage :: VBitmap -> IO ()
-closeImage vbitmap
-     = do mbBitmap <- swap vbitmap value Nothing
-          F.forM_ mbBitmap objectDelete
+     closeImage :: VBitmap -> IO ()
+     closeImage vbm = swap vbm value Nothing >>= mapM_ objectDelete
